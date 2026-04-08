@@ -63,7 +63,7 @@ test('local archive provider ingestPointer adds retrievable local evidence', asy
     notes: 'Imported pointer for later review.',
   });
 
-  assert.ok(evidenceId);
+  assert.equal(Boolean(evidenceId), true);
   const item = await provider.getItem(String(evidenceId));
   assert.equal(item?.source_ref, 'mem://pointer/1');
   assert.equal(item?.excerpt, 'Imported pointer for later review.');

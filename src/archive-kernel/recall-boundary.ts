@@ -54,6 +54,10 @@ export function createEmptyEvidenceBundle(query: string): EvidenceBundle {
   };
 }
 
+function makeSearchQuery(query: string, limit: number | undefined): { query: string; limit?: number } {
+  return limit === undefined ? { query } : { query, limit };
+}
+
 function messageFromError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -88,7 +92,7 @@ export function createArchiveRecallBoundary(options: ArchiveRecallBoundaryOption
       }
 
       try {
-        const bundle = await provider.search({ query, limit: request.limit }, request.filters);
+        const bundle = await provider.search(makeSearchQuery(query, request.limit), request.filters);
         return {
           operation: 'recall',
           status: bundle.items.length > 0 ? 'ok' : 'empty',
@@ -104,7 +108,7 @@ export function createArchiveRecallBoundary(options: ArchiveRecallBoundaryOption
           throw error;
         }
 
-        const bundle = await fallbackProvider.search({ query, limit: request.limit }, request.filters);
+        const bundle = await fallbackProvider.search(makeSearchQuery(query, request.limit), request.filters);
         return {
           operation: 'recall',
           status: 'fallback',
