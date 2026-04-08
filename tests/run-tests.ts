@@ -8,6 +8,7 @@ import {
   runPageCliIntegrationTest,
   runPromoteCliIntegrationTest,
   runRecallCliIntegrationTest,
+  runReviewCliIntegrationTest,
 } from './integration/codex-cli.test';
 import { runImportSeedCliIntegrationTest } from './integration/import-seed-cli.test';
 
@@ -26,6 +27,7 @@ const tests: TestCase[] = [
   { name: 'recall cli integration', run: runRecallCliIntegrationTest },
   { name: 'page cli integration', run: runPageCliIntegrationTest },
   { name: 'promote cli integration', run: runPromoteCliIntegrationTest },
+  { name: 'review cli integration', run: runReviewCliIntegrationTest },
   { name: 'import-seed cli integration', run: runImportSeedCliIntegrationTest },
 ];
 

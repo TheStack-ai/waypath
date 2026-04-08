@@ -21,3 +21,16 @@ export function submitPromotionCandidate(subject: string, store?: SqliteTruthKer
 
   return candidate;
 }
+
+export function reviewPromotionCandidate(
+  candidateId: string,
+  status: PromotionCandidateView['status'],
+  notes?: string,
+  store?: SqliteTruthKernelStorage,
+): PromotionCandidateView | undefined {
+  if (!store) {
+    return undefined;
+  }
+
+  return store.reviewPromotionCandidate(candidateId, status, notes);
+}

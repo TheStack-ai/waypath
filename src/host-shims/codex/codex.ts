@@ -15,27 +15,32 @@ export function createCodexHostShim(options: CodexHostShimOptions = {}) {
     host: 'codex' as const,
     bootstrap(input: CodexBootstrapInput = {}): CodexBootstrapResult {
       const storePath = input.storePath ?? defaultTruthKernelStoreLocation();
-      const facade = options.facade ?? createFacade({ storePath, autoSeed: true });
-      const session = facade.sessionStart({
-        project: input.project,
-        objective: input.objective,
-        activeTask: input.activeTask ?? 'codex-host-shim-skeleton',
-        seedEntities: input.seedEntities,
-      });
+      const ownedFacade = options.facade ? null : createFacade({ storePath, autoSeed: true });
+      const facade = (options.facade ?? ownedFacade)!;
+      try {
+        const session = facade.sessionStart({
+          project: input.project,
+          objective: input.objective,
+          activeTask: input.activeTask ?? 'codex-host-shim-skeleton',
+          seedEntities: input.seedEntities,
+        });
 
-      return {
-        host: 'codex',
-        status: 'bootstrapped',
-        entry_point: 'src/host-shims/codex',
-        command: 'codex',
-        session_id: input.sessionId ?? session.session_id,
-        facade: facade.describe(),
-        session: {
-          ...session,
+        return {
+          host: 'codex',
+          status: 'bootstrapped',
+          entry_point: 'src/host-shims/codex',
+          command: 'codex',
           session_id: input.sessionId ?? session.session_id,
-        },
-        store_path: storePath,
-      };
+          facade: facade.describe(),
+          session: {
+            ...session,
+            session_id: input.sessionId ?? session.session_id,
+          },
+          store_path: storePath,
+        };
+      } finally {
+        ownedFacade?.close();
+      }
     },
   };
 }

@@ -11,7 +11,7 @@ export async function runFacadeUnitTest(): Promise<void> {
 
   assertEqual(description.name, 'jarvis-fusion-facade');
   assertDeepEqual(description.host_shims, ['codex']);
-  assertDeepEqual(description.verbs, ['session-start', 'recall', 'page', 'promote']);
+  assertDeepEqual(description.verbs, ['session-start', 'recall', 'page', 'promote', 'review']);
 
   const session = facade.sessionStart({
     project: 'unit-project',
@@ -23,18 +23,29 @@ export async function runFacadeUnitTest(): Promise<void> {
   assertEqual(session.session_id, 'unit-project:test-run');
   assertEqual(session.context_pack.current_focus.project, 'unit-project');
   assertEqual(session.context_pack.current_focus.activeTask, 'test-run');
+  assertEqual(session.context_pack.evidence_appendix.enabled, true);
+  assert(session.context_pack.evidence_appendix.bundles.length > 0, 'expected evidence appendix bundle ids');
 
-  const recall = facade.recall('memory governance');
+  const recall = facade.recall('shared backend');
   assertEqual(recall.status, 'ready');
   const bundle = await Promise.resolve(recall.bundle);
   assert(bundle && bundle.items.length > 0, 'expected recall bundle items');
+  assert(bundle?.items.some((item) => item.title.includes('Decision:')), 'expected truth-backed evidence items');
 
   const page = facade.page('unit-project');
   assertEqual(page.status, 'ready');
   assert(page.page?.summary_markdown.includes('# unit-project'), 'expected synthesized page markdown');
+  assert(page.page?.summary_markdown.includes('## Evidence bundles'), 'expected evidence bundle section');
 
   const promote = facade.promote('remember this decision');
   assertEqual(promote.status, 'ready');
   assert(promote.candidate?.summary.includes('Promotion candidate recorded'), 'expected promotion summary');
   assertEqual(promote.candidate?.status, 'pending_review');
+
+  const review = facade.review(promote.candidate!.candidate_id, 'accepted', 'Approved for promotion');
+  assertEqual(review.status, 'ready');
+  assertEqual(review.candidate?.status, 'accepted');
+  assert(review.candidate?.summary.includes('Approved for promotion'), 'expected persisted review notes');
+
+  facade.close();
 }

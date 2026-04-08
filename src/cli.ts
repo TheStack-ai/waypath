@@ -142,6 +142,49 @@ export function runCli(argv: string[], io: CliIo): number {
     }
   }
 
+  if (parsed.command === 'review') {
+    if (!parsed.candidateId) {
+      io.stderr.write('Missing value for --candidate-id\n');
+      io.stderr.write(`${formatUsage()}\n`);
+      return 1;
+    }
+    if (!parsed.status) {
+      io.stderr.write('Missing value for --status\n');
+      io.stderr.write(`${formatUsage()}\n`);
+      return 1;
+    }
+
+    const validStatuses = new Set([
+      'pending_review',
+      'accepted',
+      'rejected',
+      'needs_more_evidence',
+      'superseded',
+    ]);
+    if (!validStatuses.has(parsed.status)) {
+      io.stderr.write(`Invalid review status: ${parsed.status}\n`);
+      io.stderr.write(`${formatUsage()}\n`);
+      return 1;
+    }
+
+    const facade = createFacade(facadeOptions);
+    try {
+      const result = facade.review(
+        parsed.candidateId,
+        parsed.status as 'accepted' | 'pending_review' | 'rejected' | 'needs_more_evidence' | 'superseded',
+        parsed.notes,
+      );
+      if (parsed.json) {
+        writeLine(io, JSON.stringify(result, null, 2));
+      } else {
+        writeLine(io, result.message);
+      }
+      return result.status === 'ready' ? 0 : 1;
+    } finally {
+      facade.close();
+    }
+  }
+
   io.stderr.write(`Unknown command: ${parsed.command}\n`);
   io.stderr.write(`${formatUsage()}\n`);
   return 1;

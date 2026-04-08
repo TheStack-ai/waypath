@@ -165,11 +165,21 @@ function mapKnowledgePage(row: Record<string, unknown>): StoredKnowledgePage {
 }
 
 function mapPromotionCandidate(row: Record<string, unknown>): PromotionCandidateView {
+  const reviewStatus = String(row.review_status);
   return {
     candidate_id: String(row.candidate_id),
     subject: String(row.review_notes ?? row.candidate_id),
-    status: row.review_status === 'accepted' ? 'accepted' : 'pending_review',
-    summary: String(row.review_notes ?? row.candidate_id),
+    status:
+      reviewStatus === 'accepted'
+        ? 'accepted'
+        : reviewStatus === 'rejected'
+          ? 'rejected'
+          : reviewStatus === 'needs_more_evidence'
+            ? 'needs_more_evidence'
+            : reviewStatus === 'superseded'
+              ? 'superseded'
+              : 'pending_review',
+    summary: String(row.review_notes ?? `Promotion candidate ${row.candidate_id} is ${reviewStatus}`),
     created_at: String(row.created_at),
   };
 }
@@ -303,7 +313,16 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
       proposed_action: 'create',
       target_object_type: 'promoted_memory',
       target_object_id: null,
-      review_status: candidate.status === 'accepted' ? 'accepted' : 'pending',
+      review_status:
+        candidate.status === 'accepted'
+          ? 'accepted'
+          : candidate.status === 'rejected'
+            ? 'rejected'
+            : candidate.status === 'needs_more_evidence'
+              ? 'needs_more_evidence'
+              : candidate.status === 'superseded'
+                ? 'superseded'
+                : 'pending',
       review_notes: candidate.summary,
       created_at: candidate.created_at,
       updated_at: candidate.created_at,
@@ -313,6 +332,31 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
   getPromotionCandidate(candidateId: string): PromotionCandidateView | undefined {
     const row = this.get<Record<string, unknown>>(`SELECT * FROM promotion_candidates WHERE candidate_id = :candidate_id LIMIT 1`, { candidate_id: candidateId });
     return row ? mapPromotionCandidate(row) : undefined;
+  }
+
+  reviewPromotionCandidate(
+    candidateId: string,
+    reviewStatus: PromotionCandidateView['status'],
+    reviewNotes?: string,
+  ): PromotionCandidateView | undefined {
+    const status =
+      reviewStatus === 'pending_review'
+        ? 'pending'
+        : reviewStatus;
+    this.run(
+      `UPDATE promotion_candidates
+       SET review_status = :review_status,
+           review_notes = COALESCE(:review_notes, review_notes),
+           updated_at = :updated_at
+       WHERE candidate_id = :candidate_id`,
+      {
+        candidate_id: candidateId,
+        review_status: status,
+        review_notes: reviewNotes ?? null,
+        updated_at: nowIso(),
+      },
+    );
+    return this.getPromotionCandidate(candidateId);
   }
 
   getRelationship(relationshipId: string): TruthRelationshipRecord | undefined {

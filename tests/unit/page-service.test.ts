@@ -56,8 +56,8 @@ export function runPageServiceUnitTest(): void {
       open_contradictions: [],
     },
     evidence_appendix: {
-      enabled: false,
-      bundles: [],
+      enabled: true,
+      bundles: ['bundle:graph-project:session-start'],
     },
     related_pages: [],
   }, store);
@@ -66,6 +66,7 @@ export function runPageServiceUnitTest(): void {
   assert(page.summary_markdown.includes('## Preferences'), 'expected preference section');
   assert(page.summary_markdown.includes('## Related entities'), 'expected entity section');
   assert(page.summary_markdown.includes('## Graph links'), 'expected graph section');
+  assert(page.summary_markdown.includes('## Evidence bundles'), 'expected evidence section');
   assert(page.summary_markdown.includes('shared backend with thin host shims'), 'expected persisted decision statement');
   assert(page.summary_markdown.includes('Thin operator-facing shim for Codex bootstrap and page flows.'), 'expected persisted entity summary');
   assert(page.summary_markdown.includes('Session-start context packs should come from persisted SQLite truth data.'), 'expected promoted memories section');
@@ -74,5 +75,6 @@ export function runPageServiceUnitTest(): void {
 
   const persisted = store.getKnowledgePage(page.page.page_id);
   assertEqual(persisted?.linked_decision_ids[0], 'decision:graph-project:shared-backend-host-shims');
+  assertEqual(persisted?.linked_evidence_bundle_ids[0], 'bundle:graph-project:session-start');
   store.close();
 }

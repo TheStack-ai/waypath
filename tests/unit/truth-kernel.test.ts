@@ -85,6 +85,9 @@ export function runTruthKernelUnitTest(): void {
   });
   const candidate = store.getPromotionCandidate('promotion:test');
   assertEqual(candidate?.status, 'pending_review');
+  const reviewed = store.reviewPromotionCandidate('promotion:test', 'accepted', 'Promotion approved');
+  assertEqual(reviewed?.status, 'accepted');
+  assert(reviewed?.summary.includes('Promotion approved'), 'expected persisted review note');
 
   store.close();
 }

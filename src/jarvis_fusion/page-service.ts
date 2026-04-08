@@ -62,6 +62,10 @@ export function synthesizeSessionPage(pack: SessionContextPack, store?: SqliteTr
       'Graph links',
       graphLinks.map((relationship) => `- ${relationship}`),
     ),
+    ...renderBulletSection(
+      'Evidence bundles',
+      pack.evidence_appendix.bundles.map((bundleId) => `- ${bundleId}`),
+    ),
   ];
 
   const linkedDecisionIds = persistedDecisions.length > 0

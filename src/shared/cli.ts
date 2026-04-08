@@ -13,6 +13,9 @@ export interface CliArgs {
   storePath?: string;
   query?: string;
   subject?: string;
+  candidateId?: string;
+  status?: string;
+  notes?: string;
   help: boolean;
 }
 
@@ -36,6 +39,9 @@ export function createCliArgs(argv: string[]): CliArgs {
     if (token === '--store-path') { args.storePath = readValue(values, ++index, '--store-path'); continue; }
     if (token === '--query') { args.query = readValue(values, ++index, '--query'); continue; }
     if (token === '--subject') { args.subject = readValue(values, ++index, '--subject'); continue; }
+    if (token === '--candidate-id') { args.candidateId = readValue(values, ++index, '--candidate-id'); continue; }
+    if (token === '--status') { args.status = readValue(values, ++index, '--status'); continue; }
+    if (token === '--notes') { args.notes = readValue(values, ++index, '--notes'); continue; }
     throw new Error(`Unknown CLI flag: ${token}`);
   }
 
@@ -57,6 +63,7 @@ export function formatUsage(): string {
     '  jarvis-fusion recall --query <text> [--json]',
     '  jarvis-fusion page --subject <text> [--json]',
     '  jarvis-fusion promote --subject <text> [--json]',
+    '  jarvis-fusion review --candidate-id <id> --status <pending_review|accepted|rejected|needs_more_evidence|superseded> [--notes <text>] [--json]',
     '  jarvis-fusion import-seed [--project <name>] [--store-path <path>] [--json]',
     '  jarvis-fusion --help',
   ].join('\n');

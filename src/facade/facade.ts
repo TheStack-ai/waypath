@@ -3,6 +3,7 @@ import {
   type FacadeDescription,
   type PageResult,
   type PromoteResult,
+  type ReviewResult,
   type RecallResult,
   type SessionRuntime,
   type SessionStartInput,
@@ -11,7 +12,7 @@ import {
 import { createSessionRuntime, type SessionRuntimeOptions } from '../session-runtime';
 import { buildLocalArchiveBundle } from '../jarvis_fusion/archive-provider.js';
 import { synthesizeSessionPage } from '../jarvis_fusion/page-service.js';
-import { submitPromotionCandidate } from '../jarvis_fusion/promotion-service.js';
+import { reviewPromotionCandidate, submitPromotionCandidate } from '../jarvis_fusion/promotion-service.js';
 import { createTruthKernelStorage, defaultTruthKernelStoreLocation } from '../jarvis_fusion/truth-kernel/index.js';
 
 export interface FacadeOptions extends SessionRuntimeOptions {
@@ -28,7 +29,7 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
   const description: FacadeDescription = {
     name: 'jarvis-fusion-facade',
     host_shims: ['codex'],
-    verbs: ['session-start', 'recall', 'page', 'promote'],
+    verbs: ['session-start', 'recall', 'page', 'promote', 'review'],
     access_layer: 'operator-facing',
     session_runtime: 'local-first',
   };
@@ -41,14 +42,19 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
       return description;
     },
     sessionStart(input: SessionStartInput): SessionStartResult {
+      const session = withEvidenceAppendix(
+        runtime.buildContextPack(input),
+        buildEvidenceQuery(input.project, input.objective, input.activeTask),
+        store,
+      );
       return {
         operation: 'session-start',
         session_id: makeSessionId(input),
-        context_pack: runtime.buildContextPack(input),
+        context_pack: session,
       };
     },
     recall(query: string): RecallResult {
-      const bundle = buildLocalArchiveBundle(query);
+      const bundle = buildLocalArchiveBundle(query, store);
       return {
         operation: 'recall',
         status: 'ready',
@@ -57,7 +63,11 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
       };
     },
     page(subject: string): PageResult {
-      const session = runtime.buildContextPack({ project: subject });
+      const session = withEvidenceAppendix(
+        runtime.buildContextPack({ project: subject }),
+        buildEvidenceQuery(subject),
+        store,
+      );
       const page = synthesizeSessionPage(session, store);
       return {
         operation: 'page',
@@ -78,7 +88,51 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
         candidate,
       };
     },
+    review(candidateId: string, status: 'accepted' | 'pending_review' | 'rejected' | 'needs_more_evidence' | 'superseded', notes?: string): ReviewResult {
+      const candidate = reviewPromotionCandidate(candidateId, status, notes, store);
+      if (!candidate) {
+        return {
+          operation: 'review',
+          status: 'missing',
+          message: `Promotion candidate not found: ${candidateId}`,
+        };
+      }
+
+      return {
+        operation: 'review',
+        status: 'ready',
+        message: candidate.summary,
+        candidate,
+      };
+    },
   };
+}
+
+function buildEvidenceQuery(
+  project?: string,
+  objective?: string,
+  activeTask?: string,
+): string {
+  return [project, objective, activeTask]
+    .filter((value): value is string => Boolean(value && value.trim().length > 0))
+    .join(' ');
+}
+
+function withEvidenceAppendix(
+  pack: SessionStartResult['context_pack'],
+  query: string,
+  store: ReturnType<typeof createTruthKernelStorage>,
+): SessionStartResult['context_pack'] {
+  const evidenceBundle = buildLocalArchiveBundle(query, store);
+  return evidenceBundle.items.length > 0
+    ? {
+        ...pack,
+        evidence_appendix: {
+          enabled: true,
+          bundles: [evidenceBundle.bundle_id],
+        },
+      }
+    : pack;
 }
 
 function makeSessionId(input: SessionStartInput): string {

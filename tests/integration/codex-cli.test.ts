@@ -48,6 +48,7 @@ export function runCodexCliIntegrationTest(): void {
         current_focus: { project: string; objective: string; activeTask: string };
         truth_highlights: { decisions: string[]; entities: string[] };
         graph_context: { related_entities: string[]; relationships: string[] };
+        evidence_appendix: { enabled: boolean; bundles: string[] };
       };
     };
   };
@@ -71,15 +72,32 @@ export function runCodexCliIntegrationTest(): void {
     ),
     'expected derived graph relationship summary in bootstrap output',
   );
+  assertEqual(result.session.context_pack.evidence_appendix.enabled, true);
+  assert(result.session.context_pack.evidence_appendix.bundles.length > 0, 'expected evidence appendix bundle ids');
 }
 
 export function runRecallCliIntegrationTest(): void {
+  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-recall-`);
+  const storePath = `${root}/truth.db`;
+  const importCapture = captureIo();
+  const importExitCode = runCli(
+    ['import-seed', '--json', '--project', 'recall-project', '--store-path', storePath],
+    importCapture.io,
+  );
+  assertEqual(importExitCode, 0);
   const captured = captureIo();
-  const exitCode = runCli(['recall', '--json', '--query', 'memory governance'], captured.io);
+  const exitCode = runCli(['recall', '--json', '--query', 'source readers read-only', '--store-path', storePath], captured.io);
   assertEqual(exitCode, 0);
-  const result = JSON.parse(captured.stdout.join('')) as { status: string; bundle?: { items: unknown[] } };
+  const result = JSON.parse(captured.stdout.join('')) as {
+    status: string;
+    bundle?: { items: { title: string }[] };
+  };
   assertEqual(result.status, 'ready');
   assert((result.bundle?.items.length ?? 0) > 0, 'expected recall bundle items');
+  assert(
+    result.bundle?.items.some((item) => item.title.includes('Decision: Keep source readers read-only')),
+    'expected truth-backed recall evidence',
+  );
 }
 
 export function runPageCliIntegrationTest(): void {
@@ -96,6 +114,7 @@ export function runPageCliIntegrationTest(): void {
   const persisted = store.getKnowledgePage(result.page!.page.page_id);
   assert(persisted?.summary_markdown.includes('## Decisions'), 'expected persisted decision section');
   assert((persisted?.linked_decision_ids[0] ?? '').startsWith('decision:'), 'expected persisted decision ids');
+  assert((persisted?.linked_evidence_bundle_ids.length ?? 0) > 0, 'expected persisted evidence bundle ids');
   store.close();
 }
 
@@ -112,4 +131,43 @@ export function runPromoteCliIntegrationTest(): void {
   const persisted = store.getPromotionCandidate(result.candidate!.candidate_id);
   assertEqual(persisted?.status, 'pending_review');
   store.close();
+}
+
+export function runReviewCliIntegrationTest(): void {
+  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-review-`);
+  const storePath = `${root}/truth.db`;
+  const promoteCapture = captureIo();
+  const promoteExitCode = runCli(
+    ['promote', '--json', '--subject', 'remember this review', '--store-path', storePath],
+    promoteCapture.io,
+  );
+  assertEqual(promoteExitCode, 0);
+  const promoted = JSON.parse(promoteCapture.stdout.join('')) as {
+    candidate?: { candidate_id: string };
+  };
+
+  const reviewCapture = captureIo();
+  const reviewExitCode = runCli(
+    [
+      'review',
+      '--json',
+      '--candidate-id',
+      promoted.candidate!.candidate_id,
+      '--status',
+      'accepted',
+      '--notes',
+      'Reviewed and approved',
+      '--store-path',
+      storePath,
+    ],
+    reviewCapture.io,
+  );
+  assertEqual(reviewExitCode, 0);
+  const reviewed = JSON.parse(reviewCapture.stdout.join('')) as {
+    status: string;
+    candidate?: { status: string; summary: string };
+  };
+  assertEqual(reviewed.status, 'ready');
+  assertEqual(reviewed.candidate?.status, 'accepted');
+  assert(reviewed.candidate?.summary.includes('Reviewed and approved'), 'expected review notes in candidate summary');
 }

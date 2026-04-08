@@ -67,7 +67,7 @@ export interface StoredKnowledgePage {
 export interface PromotionCandidateView {
   candidate_id: string;
   subject: string;
-  status: 'accepted' | 'pending_review';
+  status: 'accepted' | 'pending_review' | 'rejected' | 'needs_more_evidence' | 'superseded';
   summary: string;
   created_at: string;
 }
@@ -101,7 +101,7 @@ export interface SessionContextPack {
   related_pages: PageReference[];
 }
 
-export type FacadeVerb = 'session-start' | 'recall' | 'page' | 'promote';
+export type FacadeVerb = 'session-start' | 'recall' | 'page' | 'promote' | 'review';
 
 export interface FacadeDescription {
   name: string;
@@ -150,12 +150,20 @@ export interface PromoteResult {
   candidate?: PromotionCandidateView;
 }
 
+export interface ReviewResult {
+  operation: 'review';
+  status: 'ready' | 'missing';
+  message: string;
+  candidate?: PromotionCandidateView;
+}
+
 export interface FacadeApi {
   describe(): FacadeDescription;
   sessionStart(input: SessionStartInput): SessionStartResult;
   recall(query: string): RecallResult;
   page(subject: string): PageResult;
   promote(subject: string): PromoteResult;
+  review(candidateId: string, status: PromotionCandidateView['status'], notes?: string): ReviewResult;
 }
 
 export interface SessionRuntime {
