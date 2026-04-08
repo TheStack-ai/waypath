@@ -1,6 +1,86 @@
 # Jarvis Fusion System
 
-이 폴더는 **기존 Claude Code 기반 메인 시스템들을 분석한 결과를 바탕으로, 새로운 메인 시스템을 설계하고 구현 계획을 세우는 planning workspace**입니다.
+이 repository는 처음에는 planning workspace로 시작했지만, 현재는 **터미널에서 설치해서 바로 쓸 수 있는 `jarvis-fusion` v1-core release candidate**까지 구현된 상태입니다.
+
+현재 기준 핵심 상태:
+
+- **local-first SQLite truth kernel**
+- **graph-aware session-start context**
+- **truth-backed recall**
+- **durable page / promotion / review flows**
+- **real local Jarvis / jarvis-brain read-only adapters**
+- **terminal installable npm package (`jarvis-fusion`)**
+
+---
+
+## Quick install (local tarball)
+
+> 현재는 registry publish 전 단계이므로, **로컬 tarball install**을 기준으로 사용합니다.
+
+필수 조건:
+
+- Node **25+** (`node:sqlite` 사용)
+
+설치:
+
+```bash
+npm run build
+npm pack
+npm install -g ./jarvis-fusion-0.1.0-rc.0.tgz
+```
+
+설치 확인:
+
+```bash
+jarvis-fusion --help
+jarvis-fusion source-status --json
+jarvis-fusion import-seed --json --project demo-project --store-path /tmp/jf-demo.db
+jarvis-fusion codex --json --project demo-project --objective "bootstrap" --task "smoke" --store-path /tmp/jf-demo.db
+```
+
+---
+
+## Current v1-core command surface
+
+```bash
+jarvis-fusion codex --json [--project ...] [--objective ...] [--task ...] [--store-path ...]
+jarvis-fusion recall --query <text> [--json] [--store-path ...]
+jarvis-fusion page --subject <text> [--json] [--store-path ...]
+jarvis-fusion promote --subject <text> [--json] [--store-path ...]
+jarvis-fusion review --candidate-id <id> --status <...> [--notes <text>] [--json] [--store-path ...]
+jarvis-fusion review-queue [--json] [--store-path ...]
+jarvis-fusion inspect-page --page-id <id> [--json] [--store-path ...]
+jarvis-fusion inspect-candidate --candidate-id <id> [--json] [--store-path ...]
+jarvis-fusion import-seed [--project <name>] [--store-path <path>] [--json]
+jarvis-fusion import-local [--project <name>] [--store-path <path>] [--json]
+jarvis-fusion source-status [--json]
+```
+
+---
+
+## v1-core includes
+
+- shared backend + thin host shim 구조
+- Codex-first bootstrap path
+- explicit promotion / review governance
+- evidence bundle persistence
+- contradiction / stale / review queue surfacing
+- operator inspection commands
+- local Jarvis/Jarvis-brain imports with read-only adapters
+
+## deferred after v1-core
+
+- real MemPalace adapter
+- full Claude parity
+- registry publish flow
+- adaptive ranking feedback loops
+- multi-user / hosted deployment
+
+---
+
+## planning materials / design context
+
+아래부터의 문서는 **왜 이렇게 만들었는지**에 대한 설계/분석 배경이다.
 
 핵심 전제는 다음과 같습니다.
 
