@@ -1,11 +1,29 @@
 import type {
-  ArchiveHealth,
-  ArchiveProvider,
-  ArchiveSearchFilters,
-  ArchiveSearchQuery,
   EvidenceBundle,
   EvidenceItem,
-} from './contracts.js';
+} from '../contracts/index.js';
+
+export interface ArchiveSearchQuery {
+  readonly query: string;
+  readonly limit?: number;
+}
+
+export interface ArchiveSearchFilters {
+  readonly sourceSystems?: readonly string[];
+  readonly sourceKinds?: readonly string[];
+  readonly minConfidence?: number;
+}
+
+export interface ArchiveHealth {
+  readonly ok: boolean;
+  readonly message: string;
+}
+
+export interface ArchiveProvider {
+  search(query: ArchiveSearchQuery, filters?: ArchiveSearchFilters): Promise<EvidenceBundle>;
+  getItem(evidenceId: string): Promise<EvidenceItem | null>;
+  health(): Promise<ArchiveHealth>;
+}
 
 function nowIso(): string {
   return new Date().toISOString();

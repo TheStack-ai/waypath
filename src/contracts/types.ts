@@ -54,6 +54,23 @@ export interface PageReference {
   status: 'draft' | 'canonical' | 'stale';
 }
 
+export interface StoredKnowledgePage {
+  page: PageReference;
+  summary_markdown: string;
+  linked_entity_ids: string[];
+  linked_decision_ids: string[];
+  linked_evidence_bundle_ids: string[];
+  updated_at: string;
+}
+
+export interface PromotionCandidateView {
+  candidate_id: string;
+  subject: string;
+  status: 'accepted' | 'pending_review';
+  summary: string;
+  created_at: string;
+}
+
 export interface SessionContextPack {
   current_focus: SessionFocus;
   truth_highlights: TruthHighlights;
@@ -103,12 +120,6 @@ export interface PageResult {
   status: 'ready' | 'stub';
   message: string;
   page?: PageView;
-}
-
-export interface PromotionCandidateView {
-  candidate_id: string;
-  status: 'accepted' | 'pending_review';
-  summary: string;
 }
 
 export interface PromoteResult {

@@ -9,17 +9,18 @@ import {
   type SessionStartResult,
 } from '../contracts';
 import { createSessionRuntime, type SessionRuntimeOptions } from '../session-runtime';
-import { buildLocalArchiveBundle, createLocalArchiveProvider } from '../jarvis_fusion/archive-provider.js';
+import { buildLocalArchiveBundle } from '../jarvis_fusion/archive-provider.js';
 import { synthesizeSessionPage } from '../jarvis_fusion/page-service.js';
 import { submitPromotionCandidate } from '../jarvis_fusion/promotion-service.js';
+import { createTruthKernelStorage, defaultTruthKernelStoreLocation } from '../jarvis_fusion/truth-kernel/index.js';
 
 export interface FacadeOptions extends SessionRuntimeOptions {
   readonly runtime?: SessionRuntime;
 }
 
 export function createFacade(options: FacadeOptions = {}): FacadeApi {
-  const runtime = options.runtime ?? createSessionRuntime(options);
-  const archiveProvider = createLocalArchiveProvider();
+  const store = options.store ?? createTruthKernelStorage(options.storePath ?? defaultTruthKernelStoreLocation(), { autoMigrate: true });
+  const runtime = options.runtime ?? createSessionRuntime({ ...options, store });
   const description: FacadeDescription = {
     name: 'jarvis-fusion-facade',
     host_shims: ['codex'],
@@ -46,26 +47,29 @@ export function createFacade(options: FacadeOptions = {}): FacadeApi {
         status: 'ready',
         message: `archive recall prepared for ${query}`,
         bundle,
-      } as unknown as RecallResult;
+      };
     },
     page(subject: string): PageResult {
       const session = runtime.buildContextPack({ project: subject });
-      const page = synthesizeSessionPage(session);
+      const page = synthesizeSessionPage(session, store);
       return {
         operation: 'page',
         status: 'ready',
         message: `page synthesized for ${subject}`,
-        page,
-      } as unknown as PageResult;
+        page: {
+          page: page.page,
+          summary_markdown: page.summary_markdown,
+        },
+      };
     },
     promote(subject: string): PromoteResult {
-      const candidate = submitPromotionCandidate(subject);
+      const candidate = submitPromotionCandidate(subject, store);
       return {
         operation: 'promote',
         status: 'ready',
         message: candidate.summary,
         candidate,
-      } as unknown as PromoteResult;
+      };
     },
   };
 }

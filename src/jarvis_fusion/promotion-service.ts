@@ -1,13 +1,23 @@
-export interface PromotionReviewResult {
-  readonly candidate_id: string;
-  readonly status: 'accepted' | 'pending_review';
-  readonly summary: string;
+import type { PromotionCandidateView } from '../contracts/index.js';
+import { type SqliteTruthKernelStorage } from './truth-kernel/index.js';
+
+function nowIso(): string {
+  return new Date().toISOString();
 }
 
-export function submitPromotionCandidate(subject: string): PromotionReviewResult {
-  return {
+export function submitPromotionCandidate(subject: string, store?: SqliteTruthKernelStorage): PromotionCandidateView {
+  const candidate: PromotionCandidateView = {
     candidate_id: `promotion:${subject.replace(/\s+/g, '-').toLowerCase() || 'empty'}`,
+    subject,
     status: 'pending_review',
     summary: `Promotion candidate recorded for explicit review: ${subject}`,
+    created_at: nowIso(),
   };
+
+  if (store) {
+    store.createPromotionCandidate(candidate);
+    return store.getPromotionCandidate(candidate.candidate_id) ?? candidate;
+  }
+
+  return candidate;
 }

@@ -1,8 +1,12 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+
 import { assert, assertDeepEqual, assertEqual } from '../../src/shared/assert';
 import { createFacade } from '../../src/facade';
 
 export async function runFacadeUnitTest(): Promise<void> {
-  const facade = createFacade();
+  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-facade-`);
+  const facade = createFacade({ storePath: `${root}/truth.db`, autoSeed: true });
   const description = facade.describe();
 
   assertEqual(description.name, 'jarvis-fusion-facade');
@@ -32,4 +36,5 @@ export async function runFacadeUnitTest(): Promise<void> {
   const promote = facade.promote('remember this decision');
   assertEqual(promote.status, 'ready');
   assert(promote.candidate?.summary.includes('Promotion candidate recorded'), 'expected promotion summary');
+  assertEqual(promote.candidate?.status, 'pending_review');
 }

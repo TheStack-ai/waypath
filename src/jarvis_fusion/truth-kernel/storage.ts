@@ -11,6 +11,7 @@ import type {
   TruthPreferenceRecord,
   TruthPromotedMemoryRecord,
 } from '../contracts.js';
+import type { PromotionCandidateView, StoredKnowledgePage } from '../../contracts/index.js';
 import { TRUTH_KERNEL_SCHEMA_VERSION, buildTruthKernelMigrationSql } from './schema.js';
 
 export interface SqliteTruthKernelStoreOptions {
@@ -47,15 +48,18 @@ function nowIso(): string {
 }
 
 function ensureParentDirectory(location: string): void {
-  if (location === ':memory:') {
-    return;
-  }
-
+  if (location === ':memory:') return;
   mkdirSync(dirname(location), { recursive: true });
 }
 
 function toJson(value: unknown): string {
   return JSON.stringify(value);
+}
+
+function parseJsonArray(value: unknown): string[] {
+  if (typeof value !== 'string' || value.length === 0) return [];
+  const parsed = JSON.parse(value);
+  return Array.isArray(parsed) ? parsed.map(String) : [];
 }
 
 function asParams(record: object): Readonly<Record<string, unknown>> {
@@ -121,6 +125,32 @@ function mapPromotedMemory(row: Record<string, unknown>): TruthPromotedMemoryRec
   };
 }
 
+function mapKnowledgePage(row: Record<string, unknown>): StoredKnowledgePage {
+  return {
+    page: {
+      page_id: String(row.page_id),
+      page_type: row.page_type as StoredKnowledgePage['page']['page_type'],
+      title: String(row.title),
+      status: row.status as StoredKnowledgePage['page']['status'],
+    },
+    summary_markdown: String(row.summary_markdown),
+    linked_entity_ids: parseJsonArray(row.linked_entity_ids_json),
+    linked_decision_ids: parseJsonArray(row.linked_decision_ids_json),
+    linked_evidence_bundle_ids: parseJsonArray(row.linked_evidence_bundle_ids_json),
+    updated_at: String(row.updated_at),
+  };
+}
+
+function mapPromotionCandidate(row: Record<string, unknown>): PromotionCandidateView {
+  return {
+    candidate_id: String(row.candidate_id),
+    subject: String(row.review_notes ?? row.candidate_id),
+    status: row.review_status === 'accepted' ? 'accepted' : 'pending_review',
+    summary: String(row.review_notes ?? row.candidate_id),
+    created_at: String(row.created_at),
+  };
+}
+
 export class SqliteTruthKernelStorage implements TruthKernelStore {
   readonly location: string;
   readonly db: DatabaseSync;
@@ -129,10 +159,7 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     this.location = normalizeLocation(location);
     ensureParentDirectory(this.location);
     this.db = new DatabaseSync(this.location);
-
-    if (options.autoMigrate ?? true) {
-      this.migrate();
-    }
+    if (options.autoMigrate ?? true) this.migrate();
   }
 
   migrate(): void {
@@ -153,18 +180,15 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
   }
 
   run(sql: string, params: Readonly<Record<string, unknown>> = {}): SqliteQueryResult {
-    const statement = this.db.prepare(sql);
-    return statement.run(params as Record<string, unknown>);
+    return this.db.prepare(sql).run(params as Record<string, unknown>);
   }
 
   all<T>(sql: string, params: Readonly<Record<string, unknown>> = {}): readonly T[] {
-    const statement = this.db.prepare(sql);
-    return statement.all(params as Record<string, unknown>) as readonly T[];
+    return this.db.prepare(sql).all(params as Record<string, unknown>) as readonly T[];
   }
 
   get<T>(sql: string, params: Readonly<Record<string, unknown>> = {}): T | undefined {
-    const statement = this.db.prepare(sql);
-    return statement.get(params as Record<string, unknown>) as T | undefined;
+    return this.db.prepare(sql).get(params as Record<string, unknown>) as T | undefined;
   }
 
   transaction<T>(operation: () => T): T {
@@ -180,139 +204,102 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
   }
 
   upsertEntity(record: TruthEntityRecord): void {
-    this.run(
-      `INSERT INTO entities (
-        entity_id, entity_type, name, summary, state_json, status, canonical_page_id, created_at, updated_at
-      ) VALUES (
-        :entity_id, :entity_type, :name, :summary, :state_json, :status, :canonical_page_id, :created_at, :updated_at
-      )
-      ON CONFLICT(entity_id) DO UPDATE SET
-        entity_type = excluded.entity_type,
-        name = excluded.name,
-        summary = excluded.summary,
-        state_json = excluded.state_json,
-        status = excluded.status,
-        canonical_page_id = excluded.canonical_page_id,
-        updated_at = excluded.updated_at`,
-      asParams(record),
-    );
+    this.run(`INSERT INTO entities (entity_id, entity_type, name, summary, state_json, status, canonical_page_id, created_at, updated_at)
+      VALUES (:entity_id,:entity_type,:name,:summary,:state_json,:status,:canonical_page_id,:created_at,:updated_at)
+      ON CONFLICT(entity_id) DO UPDATE SET entity_type=excluded.entity_type,name=excluded.name,summary=excluded.summary,state_json=excluded.state_json,status=excluded.status,canonical_page_id=excluded.canonical_page_id,updated_at=excluded.updated_at`, asParams(record));
   }
 
   upsertDecision(record: TruthDecisionRecord): void {
-    this.run(
-      `INSERT INTO decisions (
-        decision_id, title, statement, status, scope_entity_id, effective_at, superseded_by, provenance_id, created_at, updated_at
-      ) VALUES (
-        :decision_id, :title, :statement, :status, :scope_entity_id, :effective_at, :superseded_by, :provenance_id, :created_at, :updated_at
-      )
-      ON CONFLICT(decision_id) DO UPDATE SET
-        title = excluded.title,
-        statement = excluded.statement,
-        status = excluded.status,
-        scope_entity_id = excluded.scope_entity_id,
-        effective_at = excluded.effective_at,
-        superseded_by = excluded.superseded_by,
-        provenance_id = excluded.provenance_id,
-        updated_at = excluded.updated_at`,
-      asParams(record),
-    );
+    this.run(`INSERT INTO decisions (decision_id,title,statement,status,scope_entity_id,effective_at,superseded_by,provenance_id,created_at,updated_at)
+      VALUES (:decision_id,:title,:statement,:status,:scope_entity_id,:effective_at,:superseded_by,:provenance_id,:created_at,:updated_at)
+      ON CONFLICT(decision_id) DO UPDATE SET title=excluded.title,statement=excluded.statement,status=excluded.status,scope_entity_id=excluded.scope_entity_id,effective_at=excluded.effective_at,superseded_by=excluded.superseded_by,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
   }
 
   upsertPreference(record: TruthPreferenceRecord): void {
-    this.run(
-      `INSERT INTO preferences (
-        preference_id, subject_kind, subject_ref, key, value, strength, status, provenance_id, created_at, updated_at
-      ) VALUES (
-        :preference_id, :subject_kind, :subject_ref, :key, :value, :strength, :status, :provenance_id, :created_at, :updated_at
-      )
-      ON CONFLICT(preference_id) DO UPDATE SET
-        subject_kind = excluded.subject_kind,
-        subject_ref = excluded.subject_ref,
-        key = excluded.key,
-        value = excluded.value,
-        strength = excluded.strength,
-        status = excluded.status,
-        provenance_id = excluded.provenance_id,
-        updated_at = excluded.updated_at`,
-      asParams(record),
-    );
+    this.run(`INSERT INTO preferences (preference_id,subject_kind,subject_ref,key,value,strength,status,provenance_id,created_at,updated_at)
+      VALUES (:preference_id,:subject_kind,:subject_ref,:key,:value,:strength,:status,:provenance_id,:created_at,:updated_at)
+      ON CONFLICT(preference_id) DO UPDATE SET subject_kind=excluded.subject_kind,subject_ref=excluded.subject_ref,key=excluded.key,value=excluded.value,strength=excluded.strength,status=excluded.status,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
   }
 
   upsertPromotedMemory(record: TruthPromotedMemoryRecord): void {
-    this.run(
-      `INSERT INTO promoted_memories (
-        memory_id, memory_type, access_tier, summary, content, subject_entity_id, status, provenance_id, created_at, updated_at
-      ) VALUES (
-        :memory_id, :memory_type, :access_tier, :summary, :content, :subject_entity_id, :status, :provenance_id, :created_at, :updated_at
-      )
-      ON CONFLICT(memory_id) DO UPDATE SET
-        memory_type = excluded.memory_type,
-        access_tier = excluded.access_tier,
-        summary = excluded.summary,
-        content = excluded.content,
-        subject_entity_id = excluded.subject_entity_id,
-        status = excluded.status,
-        provenance_id = excluded.provenance_id,
-        updated_at = excluded.updated_at`,
-      asParams(record),
-    );
+    this.run(`INSERT INTO promoted_memories (memory_id,memory_type,access_tier,summary,content,subject_entity_id,status,provenance_id,created_at,updated_at)
+      VALUES (:memory_id,:memory_type,:access_tier,:summary,:content,:subject_entity_id,:status,:provenance_id,:created_at,:updated_at)
+      ON CONFLICT(memory_id) DO UPDATE SET memory_type=excluded.memory_type,access_tier=excluded.access_tier,summary=excluded.summary,content=excluded.content,subject_entity_id=excluded.subject_entity_id,status=excluded.status,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
+  }
+
+  upsertKnowledgePage(page: StoredKnowledgePage): void {
+    this.run(`INSERT INTO knowledge_pages (page_id,page_type,title,summary_markdown,status,linked_entity_ids_json,linked_decision_ids_json,linked_evidence_bundle_ids_json,updated_at)
+      VALUES (:page_id,:page_type,:title,:summary_markdown,:status,:linked_entity_ids_json,:linked_decision_ids_json,:linked_evidence_bundle_ids_json,:updated_at)
+      ON CONFLICT(page_id) DO UPDATE SET page_type=excluded.page_type,title=excluded.title,summary_markdown=excluded.summary_markdown,status=excluded.status,linked_entity_ids_json=excluded.linked_entity_ids_json,linked_decision_ids_json=excluded.linked_decision_ids_json,linked_evidence_bundle_ids_json=excluded.linked_evidence_bundle_ids_json,updated_at=excluded.updated_at`, {
+      page_id: page.page.page_id,
+      page_type: page.page.page_type,
+      title: page.page.title,
+      summary_markdown: page.summary_markdown,
+      status: page.page.status,
+      linked_entity_ids_json: JSON.stringify(page.linked_entity_ids),
+      linked_decision_ids_json: JSON.stringify(page.linked_decision_ids),
+      linked_evidence_bundle_ids_json: JSON.stringify(page.linked_evidence_bundle_ids),
+      updated_at: page.updated_at,
+    });
+  }
+
+  getKnowledgePage(pageId: string): StoredKnowledgePage | undefined {
+    const row = this.get<Record<string, unknown>>(`SELECT * FROM knowledge_pages WHERE page_id = :page_id LIMIT 1`, { page_id: pageId });
+    return row ? mapKnowledgePage(row) : undefined;
+  }
+
+  createPromotionCandidate(candidate: PromotionCandidateView): void {
+    this.run(`INSERT INTO promotion_candidates (candidate_id,claim_id,proposed_action,target_object_type,target_object_id,review_status,review_notes,created_at,updated_at)
+      VALUES (:candidate_id,:claim_id,:proposed_action,:target_object_type,:target_object_id,:review_status,:review_notes,:created_at,:updated_at)
+      ON CONFLICT(candidate_id) DO UPDATE SET review_status=excluded.review_status,review_notes=excluded.review_notes,updated_at=excluded.updated_at`, {
+      candidate_id: candidate.candidate_id,
+      claim_id: candidate.candidate_id,
+      proposed_action: 'create',
+      target_object_type: 'promoted_memory',
+      target_object_id: null,
+      review_status: candidate.status === 'accepted' ? 'accepted' : 'pending',
+      review_notes: candidate.summary,
+      created_at: candidate.created_at,
+      updated_at: candidate.created_at,
+    });
+  }
+
+  getPromotionCandidate(candidateId: string): PromotionCandidateView | undefined {
+    const row = this.get<Record<string, unknown>>(`SELECT * FROM promotion_candidates WHERE candidate_id = :candidate_id LIMIT 1`, { candidate_id: candidateId });
+    return row ? mapPromotionCandidate(row) : undefined;
   }
 
   getEntity(entityId: string): TruthEntityRecord | undefined {
-    const row = this.get<Record<string, unknown>>(
-      `SELECT * FROM entities WHERE entity_id = :entity_id LIMIT 1`,
-      { entity_id: entityId },
-    );
+    const row = this.get<Record<string, unknown>>(`SELECT * FROM entities WHERE entity_id = :entity_id LIMIT 1`, { entity_id: entityId });
     return row ? mapEntity(row) : undefined;
   }
 
   listActiveEntities(limit = 5): readonly TruthEntityRecord[] {
-    return this.all<Record<string, unknown>>(
-      `SELECT * FROM entities WHERE status = 'active' ORDER BY updated_at DESC LIMIT :limit`,
-      { limit },
-    ).map(mapEntity);
+    return this.all<Record<string, unknown>>(`SELECT * FROM entities WHERE status = 'active' ORDER BY updated_at DESC LIMIT :limit`, { limit }).map(mapEntity);
   }
 
   listActiveDecisions(limit = 5, scopeEntityId?: string): readonly TruthDecisionRecord[] {
-    if (scopeEntityId) {
-      return this.all<Record<string, unknown>>(
-        `SELECT * FROM decisions WHERE status = 'active' AND (scope_entity_id = :scope_entity_id OR scope_entity_id IS NULL) ORDER BY updated_at DESC LIMIT :limit`,
-        { scope_entity_id: scopeEntityId, limit },
-      ).map(mapDecision);
-    }
-    return this.all<Record<string, unknown>>(
-      `SELECT * FROM decisions WHERE status = 'active' ORDER BY updated_at DESC LIMIT :limit`,
-      { limit },
+    return (scopeEntityId
+      ? this.all<Record<string, unknown>>(`SELECT * FROM decisions WHERE status = 'active' AND (scope_entity_id = :scope_entity_id OR scope_entity_id IS NULL) ORDER BY updated_at DESC LIMIT :limit`, { scope_entity_id: scopeEntityId, limit })
+      : this.all<Record<string, unknown>>(`SELECT * FROM decisions WHERE status = 'active' ORDER BY updated_at DESC LIMIT :limit`, { limit })
     ).map(mapDecision);
   }
 
   listActivePreferences(limit = 5, subjectRef?: string): readonly TruthPreferenceRecord[] {
-    if (subjectRef) {
-      return this.all<Record<string, unknown>>(
-        `SELECT * FROM preferences WHERE status = 'active' AND (subject_ref = :subject_ref OR subject_ref IS NULL) ORDER BY updated_at DESC LIMIT :limit`,
-        { subject_ref: subjectRef, limit },
-      ).map(mapPreference);
-    }
-    return this.all<Record<string, unknown>>(
-      `SELECT * FROM preferences WHERE status = 'active' ORDER BY updated_at DESC LIMIT :limit`,
-      { limit },
+    return (subjectRef
+      ? this.all<Record<string, unknown>>(`SELECT * FROM preferences WHERE status = 'active' AND (subject_ref = :subject_ref OR subject_ref IS NULL) ORDER BY updated_at DESC LIMIT :limit`, { subject_ref: subjectRef, limit })
+      : this.all<Record<string, unknown>>(`SELECT * FROM preferences WHERE status = 'active' ORDER BY updated_at DESC LIMIT :limit`, { limit })
     ).map(mapPreference);
   }
 
   listActivePromotedMemories(limit = 5, subjectEntityId?: string): readonly TruthPromotedMemoryRecord[] {
-    if (subjectEntityId) {
-      return this.all<Record<string, unknown>>(
-        `SELECT * FROM promoted_memories WHERE status = 'active' AND (subject_entity_id = :subject_entity_id OR subject_entity_id IS NULL) ORDER BY updated_at DESC LIMIT :limit`,
-        { subject_entity_id: subjectEntityId, limit },
-      ).map(mapPromotedMemory);
-    }
-    return this.all<Record<string, unknown>>(
-      `SELECT * FROM promoted_memories WHERE status = 'active' ORDER BY updated_at DESC LIMIT :limit`,
-      { limit },
+    return (subjectEntityId
+      ? this.all<Record<string, unknown>>(`SELECT * FROM promoted_memories WHERE status = 'active' AND (subject_entity_id = :subject_entity_id OR subject_entity_id IS NULL) ORDER BY updated_at DESC LIMIT :limit`, { subject_entity_id: subjectEntityId, limit })
+      : this.all<Record<string, unknown>>(`SELECT * FROM promoted_memories WHERE status = 'active' ORDER BY updated_at DESC LIMIT :limit`, { limit })
     ).map(mapPromotedMemory);
   }
 
-  countTable(tableName: 'entities' | 'decisions' | 'preferences' | 'promoted_memories'): number {
+  countTable(tableName: 'entities' | 'decisions' | 'preferences' | 'promoted_memories' | 'knowledge_pages' | 'promotion_candidates'): number {
     const row = this.get<{ count: number }>(`SELECT COUNT(*) as count FROM ${tableName}`);
     return row?.count ?? 0;
   }
@@ -322,90 +309,30 @@ export function defaultTruthKernelStoreLocation(currentDirectory: string = proce
   return join(currentDirectory, '.jarvis-fusion', 'truth.db');
 }
 
-export function createTruthKernelStorage(
-  location: string,
-  options: SqliteTruthKernelStoreOptions = {},
-): SqliteTruthKernelStorage {
+export function createTruthKernelStorage(location: string, options: SqliteTruthKernelStoreOptions = {}): SqliteTruthKernelStorage {
   return new SqliteTruthKernelStorage(location, options);
 }
 
-export function ensureTruthKernelSeedData(
-  store: SqliteTruthKernelStorage,
-  options: TruthKernelSeedOptions = {},
-): void {
+export function ensureTruthKernelSeedData(store: SqliteTruthKernelStorage, options: TruthKernelSeedOptions = {}): void {
   const project = options.project?.trim() || 'jarvis-fusion-system';
   const objective = options.objective?.trim() || 'deliver codex-first external brain';
   const activeTask = options.activeTask?.trim() || 'session-start';
   const projectEntityId = `project:${project}`;
   const timestamp = nowIso();
 
-  if (store.getEntity(projectEntityId)) {
-    return;
-  }
+  if (store.getEntity(projectEntityId)) return;
 
   store.transaction(() => {
-    store.upsertEntity({
-      entity_id: projectEntityId,
-      entity_type: 'project',
-      name: project,
-      summary: 'Primary local-first project workspace for Jarvis Fusion v1.',
-      state_json: toJson({ objective, activeTask }),
-      status: 'active',
-      canonical_page_id: null,
-      created_at: timestamp,
-      updated_at: timestamp,
-    });
-
-    store.upsertDecision({
-      decision_id: `decision:${project}:shared-backend-host-shims`,
-      title: 'Use a shared backend with thin host shims',
-      statement:
-        'Jarvis Fusion v1 keeps truth, archive orchestration, and session assembly in one local backend while Codex/Claude integrations remain thin shims.',
-      status: 'active',
-      scope_entity_id: projectEntityId,
-      effective_at: timestamp,
-      superseded_by: null,
-      provenance_id: null,
-      created_at: timestamp,
-      updated_at: timestamp,
-    });
-
-    store.upsertPreference({
-      preference_id: `preference:${project}:rollout-order`,
-      subject_kind: 'project',
-      subject_ref: projectEntityId,
-      key: 'host_rollout',
-      value: 'codex-first',
-      strength: 'high',
-      status: 'active',
-      provenance_id: null,
-      created_at: timestamp,
-      updated_at: timestamp,
-    });
-
-    store.upsertPromotedMemory({
-      memory_id: `memory:${project}:session-start-pack`,
-      memory_type: 'project',
-      access_tier: 'ops',
-      summary: 'Session-start context packs should come from persisted SQLite truth data.',
-      content: `Current objective: ${objective}. Active task: ${activeTask}.`,
-      subject_entity_id: projectEntityId,
-      status: 'active',
-      provenance_id: null,
-      created_at: timestamp,
-      updated_at: timestamp,
-    });
+    store.upsertEntity({ entity_id: projectEntityId, entity_type: 'project', name: project, summary: 'Primary local-first project workspace for Jarvis Fusion v1.', state_json: toJson({ objective, activeTask }), status: 'active', canonical_page_id: null, created_at: timestamp, updated_at: timestamp });
+    store.upsertDecision({ decision_id: `decision:${project}:shared-backend-host-shims`, title: 'Use a shared backend with thin host shims', statement: 'Jarvis Fusion v1 keeps truth, archive orchestration, and session assembly in one local backend while Codex/Claude integrations remain thin shims.', status: 'active', scope_entity_id: projectEntityId, effective_at: timestamp, superseded_by: null, provenance_id: null, created_at: timestamp, updated_at: timestamp });
+    store.upsertPreference({ preference_id: `preference:${project}:rollout-order`, subject_kind: 'project', subject_ref: projectEntityId, key: 'host_rollout', value: 'codex-first', strength: 'high', status: 'active', provenance_id: null, created_at: timestamp, updated_at: timestamp });
+    store.upsertPromotedMemory({ memory_id: `memory:${project}:session-start-pack`, memory_type: 'project', access_tier: 'ops', summary: 'Session-start context packs should come from persisted SQLite truth data.', content: `Current objective: ${objective}. Active task: ${activeTask}.`, subject_entity_id: projectEntityId, status: 'active', provenance_id: null, created_at: timestamp, updated_at: timestamp });
   });
 }
 
-export function loadSessionStartSnapshot(
-  store: SqliteTruthKernelStorage,
-  options: SessionSnapshotOptions = {},
-): SessionStartSnapshot {
+export function loadSessionStartSnapshot(store: SqliteTruthKernelStorage, options: SessionSnapshotOptions = {}): SessionStartSnapshot {
   return {
-    entities: options.projectEntityId
-      ? [store.getEntity(options.projectEntityId)].filter((value): value is TruthEntityRecord => Boolean(value))
-      : store.listActiveEntities(options.entityLimit ?? 5),
+    entities: options.projectEntityId ? [store.getEntity(options.projectEntityId)].filter((value): value is TruthEntityRecord => Boolean(value)) : store.listActiveEntities(options.entityLimit ?? 5),
     decisions: store.listActiveDecisions(options.decisionLimit ?? 5, options.projectEntityId),
     preferences: store.listActivePreferences(options.preferenceLimit ?? 5, options.projectEntityId),
     promotedMemories: store.listActivePromotedMemories(options.memoryLimit ?? 5, options.projectEntityId),

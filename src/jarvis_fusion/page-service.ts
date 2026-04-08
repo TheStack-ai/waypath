@@ -1,12 +1,12 @@
-import type { PageReference, SessionContextPack } from '../contracts/index.js';
+import type { SessionContextPack, StoredKnowledgePage } from '../contracts/index.js';
+import { type SqliteTruthKernelStorage } from './truth-kernel/index.js';
 
-export interface PageResultView {
-  readonly page: PageReference;
-  readonly summary_markdown: string;
+function nowIso(): string {
+  return new Date().toISOString();
 }
 
-export function synthesizeSessionPage(pack: SessionContextPack): PageResultView {
-  return {
+export function synthesizeSessionPage(pack: SessionContextPack, store?: SqliteTruthKernelStorage): StoredKnowledgePage {
+  const page: StoredKnowledgePage = {
     page: {
       page_id: `page:session:${pack.current_focus.project}`,
       page_type: 'session_brief',
@@ -22,5 +22,15 @@ export function synthesizeSessionPage(pack: SessionContextPack): PageResultView 
       `- Preferences: ${pack.truth_highlights.preferences.join(', ') || 'none'}`,
       `- Entities: ${pack.truth_highlights.entities.join(', ') || 'none'}`,
     ].join('\n'),
+    linked_entity_ids: pack.graph_context.related_entities,
+    linked_decision_ids: pack.truth_highlights.decisions,
+    linked_evidence_bundle_ids: pack.evidence_appendix.bundles,
+    updated_at: nowIso(),
   };
+
+  if (store) {
+    store.upsertKnowledgePage(page);
+  }
+
+  return store?.getKnowledgePage(page.page.page_id) ?? page;
 }
