@@ -1,4 +1,5 @@
 import { runFacadeUnitTest } from './unit/facade.test';
+import { runPageServiceUnitTest } from './unit/page-service.test';
 import { runSessionRuntimeUnitTest } from './unit/session-runtime.test';
 import { runTruthKernelUnitTest } from './unit/truth-kernel.test';
 import { runSourceReaderBootstrapUnitTest } from './unit/source-reader-bootstrap.test';
@@ -17,6 +18,7 @@ interface TestCase {
 
 const tests: TestCase[] = [
   { name: 'facade unit', run: runFacadeUnitTest },
+  { name: 'page service unit', run: runPageServiceUnitTest },
   { name: 'session runtime unit', run: runSessionRuntimeUnitTest },
   { name: 'truth-kernel unit', run: runTruthKernelUnitTest },
   { name: 'source-reader bootstrap unit', run: runSourceReaderBootstrapUnitTest },

@@ -194,6 +194,7 @@
 
 핵심 규칙:
 - page는 설명 surface
+- session_brief는 objective/active task뿐 아니라 stored decision · preference · entity · graph link를 함께 보여준다
 - page 생성이 곧 truth 변경은 아님
 
 ---
