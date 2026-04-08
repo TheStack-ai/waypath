@@ -9,8 +9,9 @@
     "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
+    "allowImportingTsExtensions": true,
     "lib": ["ES2022"]
   },
-  "include": ["tests/**/*.ts"],
+  "include": ["tests/**/*.ts", "tests/**/*.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

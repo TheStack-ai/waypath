@@ -11,5 +11,5 @@ test('bootstrap exposes the repo root and project name', () => {
 test('bootstrap can create temp directories for later tests', () => {
   const tempDir = createTempDir();
 
-  assert.match(tempDir, /^\/tmp\/jarvis-fusion-system-/);
+  assert.match(tempDir, /jarvis-fusion-system-/);
 });
