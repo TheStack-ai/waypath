@@ -273,7 +273,7 @@ export interface TruthKernelHealth {
 
 export interface SqliteQueryResult {
   readonly changes: number;
-  readonly lastInsertRowid: bigint;
+  readonly lastInsertRowid: number;
 }
 
 export interface TruthKernelStore {
