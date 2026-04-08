@@ -21,6 +21,7 @@ export function createDemoSourceReader(project = 'jarvis-fusion-system'): Source
             },
           },
         ],
+        relationships: [],
         decisions: [
           {
             decision_id: `decision:${project}:read-only-imports`,

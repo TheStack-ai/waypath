@@ -65,6 +65,7 @@ export function formatUsage(): string {
     '  jarvis-fusion promote --subject <text> [--json]',
     '  jarvis-fusion review --candidate-id <id> --status <pending_review|accepted|rejected|needs_more_evidence|superseded> [--notes <text>] [--json]',
     '  jarvis-fusion import-seed [--project <name>] [--store-path <path>] [--json]',
+    '  jarvis-fusion import-local [--project <name>] [--store-path <path>] [--json]',
     '  jarvis-fusion --help',
   ].join('\n');
 }

@@ -75,6 +75,7 @@ export interface PromotionCandidateView {
 export interface ImportCounts {
   provenance: number;
   entities: number;
+  relationships: number;
   decisions: number;
   preferences: number;
   promoted_memories: number;
@@ -86,6 +87,7 @@ export interface ImportResult {
   status: 'imported';
   mode: ImportMode;
   manifest_id: string;
+  readers: string[];
   imported_at: string;
   store_path: string;
   counts: ImportCounts;

@@ -41,6 +41,16 @@ export interface ImportedPreferenceInput {
   readonly provenance: SourceProvenanceInput;
 }
 
+export interface ImportedRelationshipInput {
+  readonly relationship_id: string;
+  readonly from_entity_id: string;
+  readonly relation_type: string;
+  readonly to_entity_id: string;
+  readonly weight?: number | null;
+  readonly status?: TruthStatus;
+  readonly provenance: SourceProvenanceInput;
+}
+
 export interface ImportedMemoryInput {
   readonly memory_id: string;
   readonly memory_type: MemoryType;
@@ -65,6 +75,7 @@ export interface ImportedPromotionCandidateInput {
 export interface SourceSnapshot {
   readonly reader_name: string;
   readonly entities: ImportedEntityInput[];
+  readonly relationships: ImportedRelationshipInput[];
   readonly decisions: ImportedDecisionInput[];
   readonly preferences: ImportedPreferenceInput[];
   readonly promoted_memories: ImportedMemoryInput[];
@@ -88,6 +99,7 @@ export interface BootstrapImportResult {
   readonly imported_at: string;
   readonly readers: string[];
   readonly imported_entities: number;
+  readonly imported_relationships: number;
   readonly imported_decisions: number;
   readonly imported_preferences: number;
   readonly imported_memories: number;

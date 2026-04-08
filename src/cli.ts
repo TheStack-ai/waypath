@@ -1,4 +1,4 @@
-import { runBootstrapImport, toImportResult } from './jarvis_fusion/bootstrap-import.js';
+import { createLocalImportManifest, runBootstrapImport, toImportResult } from './jarvis_fusion/bootstrap-import.js';
 import { createTruthKernelStorage, defaultTruthKernelStoreLocation } from './jarvis_fusion/truth-kernel/index.js';
 import { createFacade } from './facade';
 import { createCodexHostShim } from './host-shims';
@@ -109,6 +109,28 @@ export function runCli(argv: string[], io: CliIo): number {
         ),
         storePath,
       );
+      if (parsed.json) {
+        writeLine(io, JSON.stringify(result, null, 2));
+      } else {
+        writeLine(io, result.message);
+      }
+      return 0;
+    } finally {
+      store.close();
+    }
+  }
+
+  if (parsed.command === 'import-local') {
+    const project = parsed.project ?? 'jarvis-fusion-system';
+    const storePath = parsed.storePath ?? defaultTruthKernelStoreLocation();
+    const store = createTruthKernelStorage(storePath, { autoMigrate: true });
+    try {
+      const manifest = createLocalImportManifest(project);
+      if (manifest.reader_names.length === 0) {
+        io.stderr.write('No local source readers are available for import-local\n');
+        return 1;
+      }
+      const result = toImportResult(runBootstrapImport(store, manifest, project), storePath);
       if (parsed.json) {
         writeLine(io, JSON.stringify(result, null, 2));
       } else {

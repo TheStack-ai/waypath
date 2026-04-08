@@ -1,5 +1,10 @@
 import type { ImportResult } from '../contracts/index.js';
 import { createDemoSourceReader } from './source-readers-demo.js';
+import {
+  createJarvisBrainDbSourceReader,
+  createJarvisMemoryDbSourceReader,
+  detectAvailableLocalReaderNames,
+} from './source-readers-local.js';
 import type { BootstrapImportManifest, BootstrapImportResult, SourceReader } from './source-readers-contracts.js';
 import { SqliteTruthKernelStorage } from './truth-kernel/index.js';
 
@@ -10,13 +15,25 @@ function nowIso(): string {
 function buildReaders(manifest: BootstrapImportManifest, project: string): SourceReader[] {
   return manifest.reader_names.map((name) => {
     if (name === 'demo-source') return createDemoSourceReader(project);
+    if (name === 'jarvis-memory-db') return createJarvisMemoryDbSourceReader(project);
+    if (name === 'jarvis-brain-db') return createJarvisBrainDbSourceReader(project);
     throw new Error(`Unknown source reader: ${name}`);
   });
+}
+
+export function createLocalImportManifest(project: string): BootstrapImportManifest {
+  const readerNames = detectAvailableLocalReaderNames();
+  return {
+    manifest_id: `local-import:${project}`,
+    import_mode: 'bootstrap',
+    reader_names: readerNames,
+  };
 }
 
 export function runBootstrapImport(store: SqliteTruthKernelStorage, manifest: BootstrapImportManifest, project: string): BootstrapImportResult {
   const readers = buildReaders(manifest, project);
   let importedEntities = 0;
+  let importedRelationships = 0;
   let importedDecisions = 0;
   let importedPreferences = 0;
   let importedMemories = 0;
@@ -51,6 +68,33 @@ export function runBootstrapImport(store: SqliteTruthKernelStorage, manifest: Bo
           updated_at: importedAt,
         });
         importedEntities += 1;
+      }
+
+      for (const relationship of snapshot.relationships) {
+        const provenanceId = store.upsertProvenance({
+          provenance_id: `provenance:${relationship.provenance.source_system}:${relationship.provenance.source_ref}`,
+          source_system: relationship.provenance.source_system,
+          source_kind: relationship.provenance.source_kind,
+          source_ref: relationship.provenance.source_ref,
+          observed_at: relationship.provenance.observed_at ?? null,
+          imported_at: importedAt,
+          promoted_at: null,
+          promoted_by: null,
+          confidence: relationship.provenance.confidence ?? null,
+          notes: relationship.provenance.notes ?? null,
+        } as never);
+        store.upsertRelationship({
+          relationship_id: relationship.relationship_id,
+          from_entity_id: relationship.from_entity_id,
+          relation_type: relationship.relation_type,
+          to_entity_id: relationship.to_entity_id,
+          weight: relationship.weight ?? null,
+          status: relationship.status ?? 'active',
+          provenance_id: provenanceId,
+          created_at: importedAt,
+          updated_at: importedAt,
+        });
+        importedRelationships += 1;
       }
 
       for (const decision of snapshot.decisions) {
@@ -156,6 +200,7 @@ export function runBootstrapImport(store: SqliteTruthKernelStorage, manifest: Bo
     imported_at: importedAt,
     readers: readers.map((reader) => reader.name),
     imported_entities: importedEntities,
+    imported_relationships: importedRelationships,
     imported_decisions: importedDecisions,
     imported_preferences: importedPreferences,
     imported_memories: importedMemories,
@@ -169,16 +214,23 @@ export function toImportResult(result: BootstrapImportResult, storePath: string)
     status: 'imported',
     mode: result.import_mode,
     manifest_id: result.manifest_id,
+    readers: result.readers,
     imported_at: result.imported_at,
     store_path: storePath,
     counts: {
-      provenance: result.imported_entities + result.imported_decisions + result.imported_preferences + result.imported_memories,
+      provenance:
+        result.imported_entities +
+        result.imported_relationships +
+        result.imported_decisions +
+        result.imported_preferences +
+        result.imported_memories,
       entities: result.imported_entities,
+      relationships: result.imported_relationships,
       decisions: result.imported_decisions,
       preferences: result.imported_preferences,
       promoted_memories: result.imported_memories,
       promoted_candidates: result.imported_promotion_candidates,
     },
-    message: `Imported ${result.imported_entities} entities, ${result.imported_decisions} decisions, ${result.imported_preferences} preferences, ${result.imported_memories} memories, and ${result.imported_promotion_candidates} promotion candidates.`,
+    message: `Imported ${result.imported_entities} entities, ${result.imported_relationships} relationships, ${result.imported_decisions} decisions, ${result.imported_preferences} preferences, ${result.imported_memories} memories, and ${result.imported_promotion_candidates} promotion candidates.`,
   };
 }

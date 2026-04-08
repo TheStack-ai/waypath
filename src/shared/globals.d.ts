@@ -1,6 +1,7 @@
 declare const process: {
   argv: string[];
   exitCode?: number;
+  env: Record<string, string | undefined>;
   cwd(): string;
   stdout: {
     write(chunk: string): void;
@@ -16,11 +17,13 @@ declare const console: {
 };
 
 declare module 'node:fs' {
+  export function existsSync(path: string): boolean;
   export function mkdirSync(path: string, options?: { recursive?: boolean }): void;
   export function mkdtempSync(prefix: string): string;
 }
 
 declare module 'node:os' {
+  export function homedir(): string;
   export function tmpdir(): string;
 }
 
