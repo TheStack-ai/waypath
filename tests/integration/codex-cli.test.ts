@@ -65,3 +65,30 @@ export function runCodexCliIntegrationTest(): void {
   });
   assert(result.session.context_pack.truth_highlights.decisions.length > 0, 'expected persisted decision highlights');
 }
+
+export function runRecallCliIntegrationTest(): void {
+  const captured = captureIo();
+  const exitCode = runCli(['recall', '--json', '--query', 'memory governance'], captured.io);
+  assertEqual(exitCode, 0);
+  const result = JSON.parse(captured.stdout.join('')) as { status: string; bundle?: { items: unknown[] } };
+  assertEqual(result.status, 'ready');
+  assert((result.bundle?.items.length ?? 0) > 0, 'expected recall bundle items');
+}
+
+export function runPageCliIntegrationTest(): void {
+  const captured = captureIo();
+  const exitCode = runCli(['page', '--json', '--subject', 'jarvis-fusion-system'], captured.io);
+  assertEqual(exitCode, 0);
+  const result = JSON.parse(captured.stdout.join('')) as { status: string; page?: { summary_markdown: string } };
+  assertEqual(result.status, 'ready');
+  assert(result.page?.summary_markdown.includes('# jarvis-fusion-system'), 'expected page markdown');
+}
+
+export function runPromoteCliIntegrationTest(): void {
+  const captured = captureIo();
+  const exitCode = runCli(['promote', '--json', '--subject', 'remember this decision'], captured.io);
+  assertEqual(exitCode, 0);
+  const result = JSON.parse(captured.stdout.join('')) as { status: string; candidate?: { status: string } };
+  assertEqual(result.status, 'ready');
+  assertEqual(result.candidate?.status, 'pending_review');
+}

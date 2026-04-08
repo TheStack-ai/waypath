@@ -74,6 +74,14 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
           enabled: false,
           bundles: [],
         },
+        related_pages: [
+          {
+            page_id: `page:session:${project}`,
+            page_type: 'session_brief',
+            title: `${project} session brief`,
+            status: 'canonical',
+          },
+        ],
       };
     },
   };

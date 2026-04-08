@@ -25,9 +25,33 @@ export interface RecentChanges {
   open_contradictions: string[];
 }
 
+export interface EvidenceItem {
+  evidence_id: string;
+  source_ref: string;
+  title: string;
+  excerpt: string;
+  observed_at: string | null;
+  confidence: number | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface EvidenceBundle {
+  bundle_id: string;
+  query: string;
+  generated_at: string;
+  items: EvidenceItem[];
+}
+
 export interface EvidenceAppendix {
   enabled: boolean;
   bundles: string[];
+}
+
+export interface PageReference {
+  page_id: string;
+  page_type: 'session_brief' | 'topic_brief' | 'project_page' | 'entity_page' | 'decision_page';
+  title: string;
+  status: 'draft' | 'canonical' | 'stale';
 }
 
 export interface SessionContextPack {
@@ -36,6 +60,7 @@ export interface SessionContextPack {
   graph_context: GraphContext;
   recent_changes: RecentChanges;
   evidence_appendix: EvidenceAppendix;
+  related_pages: PageReference[];
 }
 
 export type FacadeVerb = 'session-start' | 'recall' | 'page' | 'promote';
@@ -63,20 +88,34 @@ export interface SessionStartResult {
 
 export interface RecallResult {
   operation: 'recall';
-  status: 'stub';
+  status: 'ready' | 'stub';
   message: string;
+  bundle?: Promise<EvidenceBundle> | EvidenceBundle;
+}
+
+export interface PageView {
+  page: PageReference;
+  summary_markdown: string;
 }
 
 export interface PageResult {
   operation: 'page';
-  status: 'stub';
+  status: 'ready' | 'stub';
   message: string;
+  page?: PageView;
+}
+
+export interface PromotionCandidateView {
+  candidate_id: string;
+  status: 'accepted' | 'pending_review';
+  summary: string;
 }
 
 export interface PromoteResult {
   operation: 'promote';
-  status: 'stub';
+  status: 'ready' | 'stub';
   message: string;
+  candidate?: PromotionCandidateView;
 }
 
 export interface FacadeApi {

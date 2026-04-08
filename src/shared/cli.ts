@@ -11,6 +11,8 @@ export interface CliArgs {
   task?: string;
   sessionId?: string;
   storePath?: string;
+  query?: string;
+  subject?: string;
   help: boolean;
 }
 
@@ -58,6 +60,14 @@ export function createCliArgs(argv: string[]): CliArgs {
       args.storePath = readValue(values, ++index, '--store-path');
       continue;
     }
+    if (token === '--query') {
+      args.query = readValue(values, ++index, '--query');
+      continue;
+    }
+    if (token === '--subject') {
+      args.subject = readValue(values, ++index, '--subject');
+      continue;
+    }
     throw new Error(`Unknown CLI flag: ${token}`);
   }
 
@@ -78,6 +88,9 @@ export function formatUsage(): string {
     '',
     'Usage:',
     '  jarvis-fusion codex [--json] [--project <name>] [--objective <text>] [--task <text>] [--session-id <id>] [--store-path <path>]',
+    '  jarvis-fusion recall --query <text> [--json]',
+    '  jarvis-fusion page --subject <text> [--json]',
+    '  jarvis-fusion promote --subject <text> [--json]',
     '  jarvis-fusion --help',
   ].join('\n');
 }

@@ -1,3 +1,4 @@
+import { createFacade } from './facade';
 import { createCodexHostShim } from './host-shims';
 import { createCliArgs, formatUsage, writeLine, type CliIo } from './shared/cli';
 
@@ -16,8 +17,10 @@ export function runCli(argv: string[], io: CliIo): number {
     return 0;
   }
 
+  const facade = createFacade(parsed.storePath ? { storePath: parsed.storePath, autoSeed: true } : { autoSeed: true });
+
   if (parsed.command === 'codex') {
-    const shim = createCodexHostShim();
+    const shim = createCodexHostShim({ facade });
     const result = shim.bootstrap({
       project: parsed.project,
       objective: parsed.objective,
@@ -35,6 +38,57 @@ export function runCli(argv: string[], io: CliIo): number {
       writeLine(io, `objective=${result.session.context_pack.current_focus.objective}`);
     }
 
+    return 0;
+  }
+
+  if (parsed.command === 'recall') {
+    const query = parsed.query ?? parsed.subject;
+    if (!query) {
+      io.stderr.write('Missing value for --query\n');
+      io.stderr.write(`${formatUsage()}\n`);
+      return 1;
+    }
+
+    const result = facade.recall(query);
+    if (parsed.json) {
+      writeLine(io, JSON.stringify(result, null, 2));
+    } else {
+      writeLine(io, result.message);
+    }
+    return 0;
+  }
+
+  if (parsed.command === 'page') {
+    const subject = parsed.subject ?? parsed.project;
+    if (!subject) {
+      io.stderr.write('Missing value for --subject\n');
+      io.stderr.write(`${formatUsage()}\n`);
+      return 1;
+    }
+
+    const result = facade.page(subject);
+    if (parsed.json) {
+      writeLine(io, JSON.stringify(result, null, 2));
+    } else {
+      writeLine(io, result.page?.summary_markdown ?? result.message);
+    }
+    return 0;
+  }
+
+  if (parsed.command === 'promote') {
+    const subject = parsed.subject ?? parsed.query;
+    if (!subject) {
+      io.stderr.write('Missing value for --subject\n');
+      io.stderr.write(`${formatUsage()}\n`);
+      return 1;
+    }
+
+    const result = facade.promote(subject);
+    if (parsed.json) {
+      writeLine(io, JSON.stringify(result, null, 2));
+    } else {
+      writeLine(io, result.message);
+    }
     return 0;
   }
 

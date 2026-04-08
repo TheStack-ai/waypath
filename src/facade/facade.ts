@@ -9,21 +9,17 @@ import {
   type SessionStartResult,
 } from '../contracts';
 import { createSessionRuntime, type SessionRuntimeOptions } from '../session-runtime';
+import { buildLocalArchiveBundle, createLocalArchiveProvider } from '../jarvis_fusion/archive-provider.js';
+import { synthesizeSessionPage } from '../jarvis_fusion/page-service.js';
+import { submitPromotionCandidate } from '../jarvis_fusion/promotion-service.js';
 
 export interface FacadeOptions extends SessionRuntimeOptions {
   readonly runtime?: SessionRuntime;
 }
 
-function makeStubResult(operation: 'recall' | 'page' | 'promote', message: string): RecallResult | PageResult | PromoteResult {
-  return {
-    operation,
-    status: 'stub',
-    message,
-  };
-}
-
 export function createFacade(options: FacadeOptions = {}): FacadeApi {
   const runtime = options.runtime ?? createSessionRuntime(options);
+  const archiveProvider = createLocalArchiveProvider();
   const description: FacadeDescription = {
     name: 'jarvis-fusion-facade',
     host_shims: ['codex'],
@@ -44,13 +40,32 @@ export function createFacade(options: FacadeOptions = {}): FacadeApi {
       };
     },
     recall(query: string): RecallResult {
-      return makeStubResult('recall', `recall routing is not yet wired for query: ${query}`) as RecallResult;
+      const bundle = buildLocalArchiveBundle(query);
+      return {
+        operation: 'recall',
+        status: 'ready',
+        message: `archive recall prepared for ${query}`,
+        bundle,
+      } as unknown as RecallResult;
     },
     page(subject: string): PageResult {
-      return makeStubResult('page', `page synthesis is not yet wired for subject: ${subject}`) as PageResult;
+      const session = runtime.buildContextPack({ project: subject });
+      const page = synthesizeSessionPage(session);
+      return {
+        operation: 'page',
+        status: 'ready',
+        message: `page synthesized for ${subject}`,
+        page,
+      } as unknown as PageResult;
     },
     promote(subject: string): PromoteResult {
-      return makeStubResult('promote', `promotion workflow is not yet wired for subject: ${subject}`) as PromoteResult;
+      const candidate = submitPromotionCandidate(subject);
+      return {
+        operation: 'promote',
+        status: 'ready',
+        message: candidate.summary,
+        candidate,
+      } as unknown as PromoteResult;
     },
   };
 }
