@@ -1,17 +1,34 @@
 {
-  "name": "jarvis-fusion-system",
-  "version": "0.0.0",
-  "private": true,
-  "description": "Local-first JVM? Node/TypeScript skeleton for the Jarvis Fusion System.",
+  "name": "jarvis-fusion",
+  "version": "0.1.0-rc.0",
+  "description": "Local-first external brain CLI for Jarvis Fusion host shims and truth workflows.",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "files": [
+    "dist/src/**",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=25.0.0"
+  },
   "scripts": {
     "build": "npx --yes --package typescript tsc -p tsconfig.json",
     "typecheck": "npx --yes --package typescript tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node dist/tests/run-tests.js",
     "start": "npm run build && node dist/src/cli.js",
     "codex": "npm run build && node dist/src/cli.js codex --json",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "pack:release": "npm pack"
   },
   "bin": {
     "jarvis-fusion": "dist/src/cli.js"
-  }
+  },
+  "keywords": [
+    "jarvis",
+    "codex",
+    "local-first",
+    "sqlite",
+    "memory",
+    "cli"
+  ]
 }

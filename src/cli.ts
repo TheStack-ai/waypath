@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { createLocalImportManifest, runBootstrapImport, toImportResult } from './jarvis_fusion/bootstrap-import.js';
 import { probeLocalSourceAdapters } from './jarvis_fusion/source-readers-local.js';
 import { createTruthKernelStorage, defaultTruthKernelStoreLocation } from './jarvis_fusion/truth-kernel/index.js';
