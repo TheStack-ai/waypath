@@ -3,6 +3,8 @@ import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import type {
+  GraphContext,
+  GraphRelationshipSummary,
   SqliteQueryResult,
   TruthDecisionRecord,
   TruthEntityRecord,
@@ -10,6 +12,7 @@ import type {
   TruthKernelStore,
   TruthPreferenceRecord,
   TruthPromotedMemoryRecord,
+  TruthRelationshipRecord,
 } from '../contracts.js';
 import type { PromotionCandidateView, StoredKnowledgePage } from '../../contracts/index.js';
 import { TRUTH_KERNEL_SCHEMA_VERSION, buildTruthKernelMigrationSql } from './schema.js';
@@ -29,6 +32,12 @@ export interface SessionStartSnapshot {
   readonly decisions: readonly TruthDecisionRecord[];
   readonly preferences: readonly TruthPreferenceRecord[];
   readonly promotedMemories: readonly TruthPromotedMemoryRecord[];
+}
+
+export interface GraphSummaryOptions {
+  readonly seedEntityIds: readonly string[];
+  readonly relationshipLimit?: number;
+  readonly relatedEntityLimit?: number;
 }
 
 interface SessionSnapshotOptions {
@@ -95,6 +104,20 @@ function mapDecision(row: Record<string, unknown>): TruthDecisionRecord {
   };
 }
 
+function mapRelationship(row: Record<string, unknown>): TruthRelationshipRecord {
+  return {
+    relationship_id: String(row.relationship_id),
+    from_entity_id: String(row.from_entity_id),
+    relation_type: String(row.relation_type),
+    to_entity_id: String(row.to_entity_id),
+    weight: typeof row.weight === 'number' ? row.weight : null,
+    status: row.status as TruthRelationshipRecord['status'],
+    provenance_id: row.provenance_id === null ? null : String(row.provenance_id),
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+  };
+}
+
 function mapPreference(row: Record<string, unknown>): TruthPreferenceRecord {
   return {
     preference_id: String(row.preference_id),
@@ -148,6 +171,16 @@ function mapPromotionCandidate(row: Record<string, unknown>): PromotionCandidate
     status: row.review_status === 'accepted' ? 'accepted' : 'pending_review',
     summary: String(row.review_notes ?? row.candidate_id),
     created_at: String(row.created_at),
+  };
+}
+
+function mapRelationshipSummary(record: TruthRelationshipRecord): GraphRelationshipSummary {
+  return {
+    relationship_id: record.relationship_id,
+    from_entity_id: record.from_entity_id,
+    relation_type: record.relation_type,
+    to_entity_id: record.to_entity_id,
+    weight: record.weight,
   };
 }
 
@@ -215,6 +248,12 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
       ON CONFLICT(decision_id) DO UPDATE SET title=excluded.title,statement=excluded.statement,status=excluded.status,scope_entity_id=excluded.scope_entity_id,effective_at=excluded.effective_at,superseded_by=excluded.superseded_by,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
   }
 
+  upsertRelationship(record: TruthRelationshipRecord): void {
+    this.run(`INSERT INTO relationships (relationship_id,from_entity_id,relation_type,to_entity_id,weight,status,provenance_id,created_at,updated_at)
+      VALUES (:relationship_id,:from_entity_id,:relation_type,:to_entity_id,:weight,:status,:provenance_id,:created_at,:updated_at)
+      ON CONFLICT(relationship_id) DO UPDATE SET from_entity_id=excluded.from_entity_id,relation_type=excluded.relation_type,to_entity_id=excluded.to_entity_id,weight=excluded.weight,status=excluded.status,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
+  }
+
   upsertProvenance(record: { provenance_id: string; source_system: string; source_kind: string; source_ref: string; observed_at: string | null; imported_at: string | null; promoted_at: string | null; promoted_by: string | null; confidence: number | null; notes: string | null; }): string {
     this.run(`INSERT INTO provenance_records (provenance_id,source_system,source_kind,source_ref,observed_at,imported_at,promoted_at,promoted_by,confidence,notes)
       VALUES (:provenance_id,:source_system,:source_kind,:source_ref,:observed_at,:imported_at,:promoted_at,:promoted_by,:confidence,:notes)
@@ -276,6 +315,10 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     return row ? mapPromotionCandidate(row) : undefined;
   }
 
+  getRelationship(relationshipId: string): TruthRelationshipRecord | undefined {
+    const row = this.get<Record<string, unknown>>(`SELECT * FROM relationships WHERE relationship_id = :relationship_id LIMIT 1`, { relationship_id: relationshipId });
+    return row ? mapRelationship(row) : undefined;
+  }
 
   getProvenance(provenanceId: string) {
     const row = this.get<Record<string, unknown>>(`SELECT * FROM provenance_records WHERE provenance_id = :provenance_id LIMIT 1`, { provenance_id: provenanceId });
@@ -303,6 +346,31 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     return this.all<Record<string, unknown>>(`SELECT * FROM entities WHERE status = 'active' ORDER BY updated_at DESC LIMIT :limit`, { limit }).map(mapEntity);
   }
 
+  listRelationshipsForEntity(entityId: string, limit = 10): readonly TruthRelationshipRecord[] {
+    return this.all<Record<string, unknown>>(
+      `SELECT * FROM relationships
+       WHERE status = 'active'
+         AND (from_entity_id = :entity_id OR to_entity_id = :entity_id)
+       ORDER BY updated_at DESC, relationship_id ASC
+       LIMIT :limit`,
+      { entity_id: entityId, limit },
+    ).map(mapRelationship);
+  }
+
+  listRelationshipsForEntities(entityIds: readonly string[], limit = 10): readonly TruthRelationshipRecord[] {
+    if (entityIds.length === 0) return [];
+    const placeholders = entityIds.map((_, index) => `:entity_id_${index}`).join(', ');
+    const params = Object.fromEntries(entityIds.map((entityId, index) => [`entity_id_${index}`, entityId]));
+    return this.all<Record<string, unknown>>(
+      `SELECT * FROM relationships
+       WHERE status = 'active'
+         AND (from_entity_id IN (${placeholders}) OR to_entity_id IN (${placeholders}))
+       ORDER BY updated_at DESC, relationship_id ASC
+       LIMIT :limit`,
+      { ...params, limit },
+    ).map(mapRelationship);
+  }
+
   listActiveDecisions(limit = 5, scopeEntityId?: string): readonly TruthDecisionRecord[] {
     return (scopeEntityId
       ? this.all<Record<string, unknown>>(`SELECT * FROM decisions WHERE status = 'active' AND (scope_entity_id = :scope_entity_id OR scope_entity_id IS NULL) ORDER BY updated_at DESC LIMIT :limit`, { scope_entity_id: scopeEntityId, limit })
@@ -324,7 +392,30 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     ).map(mapPromotedMemory);
   }
 
-  countTable(tableName: 'entities' | 'decisions' | 'preferences' | 'promoted_memories' | 'knowledge_pages' | 'promotion_candidates'): number {
+  summarizeGraph(options: GraphSummaryOptions): GraphContext {
+    const seedEntityIds = [...new Set(options.seedEntityIds.filter((entityId) => entityId.trim().length > 0))];
+    if (seedEntityIds.length === 0) {
+      return {
+        seed_entities: [],
+        related_entities: [],
+        relationships: [],
+      };
+    }
+
+    const relationships = this.listRelationshipsForEntities(seedEntityIds, options.relationshipLimit ?? 12);
+    const relatedEntityIds = [...new Set([
+      ...seedEntityIds,
+      ...relationships.flatMap((relationship) => [relationship.from_entity_id, relationship.to_entity_id]),
+    ])];
+
+    return {
+      seed_entities: seedEntityIds,
+      related_entities: relatedEntityIds.slice(0, options.relatedEntityLimit ?? 12),
+      relationships: relationships.map(mapRelationshipSummary),
+    };
+  }
+
+  countTable(tableName: 'entities' | 'relationships' | 'decisions' | 'preferences' | 'promoted_memories' | 'knowledge_pages' | 'promotion_candidates'): number {
     const row = this.get<{ count: number }>(`SELECT COUNT(*) as count FROM ${tableName}`);
     return row?.count ?? 0;
   }
@@ -349,9 +440,13 @@ export function ensureTruthKernelSeedData(store: SqliteTruthKernelStorage, optio
 
   store.transaction(() => {
     store.upsertEntity({ entity_id: projectEntityId, entity_type: 'project', name: project, summary: 'Primary local-first project workspace for Jarvis Fusion v1.', state_json: toJson({ objective, activeTask }), status: 'active', canonical_page_id: null, created_at: timestamp, updated_at: timestamp });
+    store.upsertEntity({ entity_id: `task:${project}:${activeTask}`, entity_type: 'task', name: activeTask, summary: `Current active task for ${project}.`, state_json: toJson({ projectEntityId }), status: 'active', canonical_page_id: null, created_at: timestamp, updated_at: timestamp });
+    store.upsertEntity({ entity_id: `system:${project}:codex-shim`, entity_type: 'system', name: 'Codex host shim', summary: 'Thin operator-facing host shim for Codex.', state_json: toJson({ host: 'codex' }), status: 'active', canonical_page_id: null, created_at: timestamp, updated_at: timestamp });
     store.upsertDecision({ decision_id: `decision:${project}:shared-backend-host-shims`, title: 'Use a shared backend with thin host shims', statement: 'Jarvis Fusion v1 keeps truth, archive orchestration, and session assembly in one local backend while Codex/Claude integrations remain thin shims.', status: 'active', scope_entity_id: projectEntityId, effective_at: timestamp, superseded_by: null, provenance_id: null, created_at: timestamp, updated_at: timestamp });
     store.upsertPreference({ preference_id: `preference:${project}:rollout-order`, subject_kind: 'project', subject_ref: projectEntityId, key: 'host_rollout', value: 'codex-first', strength: 'high', status: 'active', provenance_id: null, created_at: timestamp, updated_at: timestamp });
     store.upsertPromotedMemory({ memory_id: `memory:${project}:session-start-pack`, memory_type: 'project', access_tier: 'ops', summary: 'Session-start context packs should come from persisted SQLite truth data.', content: `Current objective: ${objective}. Active task: ${activeTask}.`, subject_entity_id: projectEntityId, status: 'active', provenance_id: null, created_at: timestamp, updated_at: timestamp });
+    store.upsertRelationship({ relationship_id: `relationship:${project}:project-active-task`, from_entity_id: projectEntityId, relation_type: 'has_active_task', to_entity_id: `task:${project}:${activeTask}`, weight: 1, status: 'active', provenance_id: null, created_at: timestamp, updated_at: timestamp });
+    store.upsertRelationship({ relationship_id: `relationship:${project}:project-host-shim`, from_entity_id: projectEntityId, relation_type: 'uses_system', to_entity_id: `system:${project}:codex-shim`, weight: 0.9, status: 'active', provenance_id: null, created_at: timestamp, updated_at: timestamp });
   });
 }
 
@@ -362,4 +457,8 @@ export function loadSessionStartSnapshot(store: SqliteTruthKernelStorage, option
     preferences: store.listActivePreferences(options.preferenceLimit ?? 5, options.projectEntityId),
     promotedMemories: store.listActivePromotedMemories(options.memoryLimit ?? 5, options.projectEntityId),
   };
+}
+
+export function loadGraphSummary(store: SqliteTruthKernelStorage, options: GraphSummaryOptions): GraphContext {
+  return store.summarizeGraph(options);
 }
