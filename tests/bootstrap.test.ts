@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import { createTempDir, projectName, projectRoot } from './bootstrap.ts';
+
+test('bootstrap exposes the repo root and project name', () => {
+  assert.equal(projectName, 'jarvis-fusion-system');
+  assert.equal(projectRoot(), process.cwd());
+});
+
+test('bootstrap can create temp directories for later tests', () => {
+  const tempDir = createTempDir();
+
+  assert.match(tempDir, /^\/tmp\/jarvis-fusion-system-/);
+});
