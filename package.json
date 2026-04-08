@@ -1,0 +1,10 @@
+{
+  "name": "jarvis-fusion-system",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/bootstrap.test.ts",
+    "typecheck": "npx --yes -p typescript@5.8.3 -p @types/node@22 tsc -p tsconfig.json --noEmit"
+  }
+}
