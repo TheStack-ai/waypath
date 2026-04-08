@@ -18,6 +18,12 @@ import type {
 
 const DEFAULT_JARVIS_DB_PATH = join(homedir(), '.claude', 'jarvis', 'data', 'jarvis.db');
 const DEFAULT_JARVIS_BRAIN_DB_PATH = join(homedir(), '.jarvis-orb', 'brain.db');
+const DEFAULT_MEMPALACE_PATHS = [
+  join(homedir(), 'MemPalace'),
+  join(homedir(), 'Projects', 'MemPalace'),
+  join(homedir(), 'Projects', 'mempalace'),
+  join(homedir(), '.mempalace'),
+] as const;
 
 type SqliteRow = Record<string, unknown>;
 
@@ -135,12 +141,114 @@ function entitySummaryFromProperties(properties: Record<string, unknown>): strin
   return entries.map(([key, value]) => `${key}: ${String(value)}`).join(', ');
 }
 
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function stripDecisionPrefix(value: string): string {
+  return value
+    .replace(/^\s*[-*]\s+/u, '')
+    .replace(/^\s*\d+\.\s+/u, '')
+    .replace(/^\s*\*\*(.*?)\*\*:\s*/u, '$1: ')
+    .replace(/^\s*[.:]\s*/u, '')
+    .trim();
+}
+
+function distillDecisionTitle(value: string): string {
+  const cleaned = normalizeWhitespace(stripDecisionPrefix(value));
+  if (cleaned.length <= 120) return cleaned;
+  return `${cleaned.slice(0, 117).trimEnd()}...`;
+}
+
+function isNoiseText(value: string): boolean {
+  const normalized = normalizeWhitespace(value).toLowerCase();
+  if (normalized.length === 0) return true;
+  return (
+    normalized.includes('<local-command-caveat>') ||
+    (normalized.startsWith('topics:') && normalized.includes('messages:')) ||
+    normalized.startsWith('tools used:')
+  );
+}
+
+function firstMeaningfulLine(value: string): string {
+  const lines = value
+    .split('\n')
+    .map((line) => normalizeWhitespace(line))
+    .filter((line) => line.length > 0);
+  return lines[0] ?? '';
+}
+
+function distillMemorySummary(description: string, content: string): string {
+  const preferred = !isNoiseText(description) && description.length > 0
+    ? description
+    : firstMeaningfulLine(content);
+  const cleaned = normalizeWhitespace(preferred);
+  if (cleaned.length <= 160) return cleaned;
+  return `${cleaned.slice(0, 157).trimEnd()}...`;
+}
+
+function shouldKeepDecision(rawDecision: string, rawReasoning: string): boolean {
+  const decision = distillDecisionTitle(rawDecision);
+  const reasoning = normalizeWhitespace(rawReasoning);
+  if (decision.length < 8 || isNoiseText(decision) || isNoiseText(reasoning || decision)) {
+    return false;
+  }
+
+  const raw = rawDecision.trim();
+  if (reasoning.length === 0 && (/^[-*.]/u.test(raw) || raw.startsWith('**') || raw.includes('—'))) {
+    return false;
+  }
+
+  return true;
+}
+
+function shouldKeepMemory(description: string, content: string): boolean {
+  const summary = distillMemorySummary(description, content);
+  return summary.length >= 12 && !isNoiseText(summary) && !isNoiseText(content);
+}
+
 export function localJarvisReaderAvailable(): boolean {
   return existsSync(getJarvisDbPath());
 }
 
 export function localJarvisBrainReaderAvailable(): boolean {
   return existsSync(getJarvisBrainDbPath());
+}
+
+export interface LocalSourceProbe {
+  readonly reader: string;
+  readonly available: boolean;
+  readonly path: string | null;
+  readonly adapter_status: 'ready' | 'probe_only' | 'missing';
+}
+
+function getMemPalaceCandidatePaths(): readonly string[] {
+  const envPath = process.env.JARVIS_FUSION_MEMPALACE_PATH;
+  return envPath ? [envPath, ...DEFAULT_MEMPALACE_PATHS] : DEFAULT_MEMPALACE_PATHS;
+}
+
+export function probeLocalSourceAdapters(): readonly LocalSourceProbe[] {
+  const mempalacePath = getMemPalaceCandidatePaths().find((path) => existsSync(path)) ?? null;
+  return [
+    {
+      reader: 'jarvis-memory-db',
+      available: localJarvisReaderAvailable(),
+      path: localJarvisReaderAvailable() ? getJarvisDbPath() : null,
+      adapter_status: localJarvisReaderAvailable() ? 'ready' : 'missing',
+    },
+    {
+      reader: 'jarvis-brain-db',
+      available: localJarvisBrainReaderAvailable(),
+      path: localJarvisBrainReaderAvailable() ? getJarvisBrainDbPath() : null,
+      adapter_status: localJarvisBrainReaderAvailable() ? 'ready' : 'missing',
+    },
+    {
+      reader: 'mempalace',
+      available: mempalacePath !== null,
+      path: mempalacePath,
+      adapter_status: mempalacePath ? 'probe_only' : 'missing',
+    },
+  ];
 }
 
 export function createJarvisMemoryDbSourceReader(project = 'jarvis-fusion-system'): SourceReader {
@@ -244,13 +352,14 @@ export function createJarvisMemoryDbSourceReader(project = 'jarvis-fusion-system
             WHERE decision <> ''
             ORDER BY timestamp DESC
             LIMIT 12`,
-        ).map<ImportedDecisionInput>((row) => {
+        )
+          .filter((row) => shouldKeepDecision(asString(row.decision), asString(row.reasoning)))
+          .map<ImportedDecisionInput>((row) => {
           const rawId = asString(row.id);
-          const projectLabel = asString(row.project);
           return {
             decision_id: prefixedId('jarvis', 'decision', rawId),
-            title: asString(row.decision, `Imported decision ${rawId}`),
-            statement: asString(row.reasoning) || asString(row.decision),
+            title: distillDecisionTitle(asString(row.decision, `Imported decision ${rawId}`)),
+            statement: normalizeWhitespace(asString(row.reasoning) || asString(row.decision)),
             scope_entity_id: sourceAnchorId,
             effective_at: asString(row.timestamp, null as never),
             provenance: makeProvenance(
@@ -294,15 +403,17 @@ export function createJarvisMemoryDbSourceReader(project = 'jarvis-fusion-system
              FROM memories
             ORDER BY created_at DESC
             LIMIT 12`,
-        ).map<ImportedMemoryInput>((row) => {
+        )
+          .filter((row) => shouldKeepMemory(asString(row.description), asString(row.content)))
+          .map<ImportedMemoryInput>((row) => {
           const rawId = asString(row.id);
-          const description = asString(row.description);
+          const description = normalizeWhitespace(asString(row.description));
           const content = asString(row.content);
           return {
             memory_id: prefixedId('jarvis', 'memory', rawId),
             memory_type: normalizeMemoryType(asString(row.memory_type, 'semantic')),
             access_tier: normalizeAccessTier(asString(row.access_tier)),
-            summary: description || content.slice(0, 160),
+            summary: distillMemorySummary(description, content),
             content,
             subject_entity_id: sourceAnchorId,
             provenance: makeProvenance(
@@ -457,14 +568,16 @@ export function createJarvisBrainDbSourceReader(project = 'jarvis-fusion-system'
              FROM memories
             ORDER BY created_at DESC
             LIMIT 12`,
-        ).map<ImportedMemoryInput>((row) => {
+        )
+          .filter((row) => shouldKeepMemory('', asString(row.content)))
+          .map<ImportedMemoryInput>((row) => {
           const rawId = asString(row.id);
           const content = asString(row.content);
           return {
             memory_id: prefixedId('jarvis-brain', 'memory', rawId),
             memory_type: normalizeMemoryType(asString(row.memory_type, 'semantic')),
             access_tier: 'notes',
-            summary: content.slice(0, 160),
+            summary: distillMemorySummary('', content),
             content,
             subject_entity_id: subjectByMemoryId.get(rawId) ?? sourceAnchorId,
             provenance: makeProvenance(

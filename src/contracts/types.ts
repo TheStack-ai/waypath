@@ -94,6 +94,19 @@ export interface ImportResult {
   message: string;
 }
 
+export interface LocalSourceStatusItem {
+  reader: string;
+  available: boolean;
+  path: string | null;
+  adapter_status: 'ready' | 'probe_only' | 'missing';
+}
+
+export interface LocalSourceStatusResult {
+  operation: 'source-status';
+  status: 'ready';
+  sources: LocalSourceStatusItem[];
+}
+
 export interface SessionContextPack {
   current_focus: SessionFocus;
   truth_highlights: TruthHighlights;

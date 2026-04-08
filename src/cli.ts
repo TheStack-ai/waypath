@@ -1,4 +1,5 @@
 import { createLocalImportManifest, runBootstrapImport, toImportResult } from './jarvis_fusion/bootstrap-import.js';
+import { probeLocalSourceAdapters } from './jarvis_fusion/source-readers-local.js';
 import { createTruthKernelStorage, defaultTruthKernelStoreLocation } from './jarvis_fusion/truth-kernel/index.js';
 import { createFacade } from './facade';
 import { createCodexHostShim } from './host-shims';
@@ -140,6 +141,25 @@ export function runCli(argv: string[], io: CliIo): number {
     } finally {
       store.close();
     }
+  }
+
+  if (parsed.command === 'source-status') {
+    const result = {
+      operation: 'source-status' as const,
+      status: 'ready' as const,
+      sources: probeLocalSourceAdapters(),
+    };
+    if (parsed.json) {
+      writeLine(io, JSON.stringify(result, null, 2));
+    } else {
+      for (const source of result.sources) {
+        writeLine(
+          io,
+          `${source.reader}: ${source.available ? source.adapter_status : 'missing'}${source.path ? ` (${source.path})` : ''}`,
+        );
+      }
+    }
+    return 0;
   }
 
   if (parsed.command === 'promote') {

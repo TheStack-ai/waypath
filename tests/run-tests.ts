@@ -11,7 +11,10 @@ import {
   runReviewCliIntegrationTest,
 } from './integration/codex-cli.test';
 import { runImportSeedCliIntegrationTest } from './integration/import-seed-cli.test';
-import { runImportLocalCliIntegrationTest } from './integration/import-local-cli.test';
+import {
+  runImportLocalCliIntegrationTest,
+  runSourceStatusCliIntegrationTest,
+} from './integration/import-local-cli.test';
 
 interface TestCase {
   name: string;
@@ -31,6 +34,7 @@ const tests: TestCase[] = [
   { name: 'review cli integration', run: runReviewCliIntegrationTest },
   { name: 'import-seed cli integration', run: runImportSeedCliIntegrationTest },
   { name: 'import-local cli integration', run: runImportLocalCliIntegrationTest },
+  { name: 'source-status cli integration', run: runSourceStatusCliIntegrationTest },
 ];
 
 async function main(): Promise<void> {
