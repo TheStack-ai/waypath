@@ -61,6 +61,18 @@ export function runSessionRuntimeUnitTest(): void {
     created_at: timestamp,
     updated_at: timestamp,
   });
+  store.upsertPreference({
+    preference_id: 'preference:demo-project:context-mode-conflict',
+    subject_kind: 'project',
+    subject_ref: 'project:demo-project:imported',
+    key: 'context_mode',
+    value: 'linear',
+    strength: 'medium',
+    status: 'active',
+    provenance_id: null,
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
   store.upsertPromotedMemory({
     memory_id: 'memory:demo-project:graph-import',
     memory_type: 'project',
@@ -107,6 +119,26 @@ export function runSessionRuntimeUnitTest(): void {
       updated_at: timestamp,
     },
   );
+  store.createPromotionCandidate({
+    candidate_id: 'promotion:demo-project:review-me',
+    subject: 'review me',
+    status: 'pending_review',
+    summary: 'Candidate awaiting explicit review',
+    created_at: timestamp,
+  });
+  store.upsertKnowledgePage({
+    page: {
+      page_id: 'page:stale:demo-project',
+      page_type: 'project_page',
+      title: 'Stale project page',
+      status: 'stale',
+    },
+    summary_markdown: '# stale',
+    linked_entity_ids: ['project:demo-project'],
+    linked_decision_ids: [],
+    linked_evidence_bundle_ids: [],
+    updated_at: timestamp,
+  });
 
   const runtime = createSessionRuntime({ store, autoSeed: false });
   const pack = runtime.buildContextPack({
@@ -161,6 +193,18 @@ export function runSessionRuntimeUnitTest(): void {
   assert(
     pack.graph_context.relationships[0]?.includes('has_active_task'),
     'expected operational relationship to be prioritized first',
+  );
+  assert(
+    pack.recent_changes.open_contradictions.some((item) => item.includes('context_mode')),
+    'expected preference contradiction to surface',
+  );
+  assert(
+    pack.recent_changes.review_queue.some((item) => item.includes('promotion:demo-project:review-me')),
+    'expected pending review candidate to surface',
+  );
+  assert(
+    pack.recent_changes.stale_items.some((item) => item.includes('page:stale:demo-project')),
+    'expected stale page to surface',
   );
   assertEqual(pack.evidence_appendix.enabled, false);
 

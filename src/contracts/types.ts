@@ -24,6 +24,8 @@ export interface RecentChanges {
   recent_promotions: string[];
   superseded: string[];
   open_contradictions: string[];
+  review_queue: string[];
+  stale_items: string[];
 }
 
 export interface EvidenceItem {

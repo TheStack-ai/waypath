@@ -53,7 +53,9 @@ export function runPageServiceUnitTest(): void {
     recent_changes: {
       recent_promotions: [],
       superseded: [],
-      open_contradictions: [],
+      open_contradictions: ['Preference conflict on workspace: context_mode -> graph-aware | linear'],
+      review_queue: ['promotion:graph-project:review-me: Candidate awaiting explicit review'],
+      stale_items: ['page:stale:graph-project: stale project page'],
     },
     evidence_appendix: {
       enabled: true,
@@ -66,6 +68,9 @@ export function runPageServiceUnitTest(): void {
   assert(page.summary_markdown.includes('## Preferences'), 'expected preference section');
   assert(page.summary_markdown.includes('## Related entities'), 'expected entity section');
   assert(page.summary_markdown.includes('## Graph links'), 'expected graph section');
+  assert(page.summary_markdown.includes('## Review queue'), 'expected review queue section');
+  assert(page.summary_markdown.includes('## Open contradictions'), 'expected contradiction section');
+  assert(page.summary_markdown.includes('## Stale items'), 'expected stale section');
   assert(page.summary_markdown.includes('## Evidence bundles'), 'expected evidence section');
   assert(page.summary_markdown.includes('shared backend with thin host shims'), 'expected persisted decision statement');
   assert(page.summary_markdown.includes('Thin operator-facing shim for Codex bootstrap and page flows.'), 'expected persisted entity summary');

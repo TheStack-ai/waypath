@@ -48,6 +48,13 @@ interface SessionSnapshotOptions {
   readonly memoryLimit?: number;
 }
 
+interface PreferenceConflictRow {
+  readonly key: string;
+  readonly subject_ref: string | null;
+  readonly values_json: string;
+  readonly last_updated: string;
+}
+
 function normalizeLocation(location: string): string {
   return location.trim();
 }
@@ -304,6 +311,19 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     return row ? mapKnowledgePage(row) : undefined;
   }
 
+  listKnowledgePages(limit = 10, status?: StoredKnowledgePage['page']['status']): readonly StoredKnowledgePage[] {
+    const rows = status
+      ? this.all<Record<string, unknown>>(
+          `SELECT * FROM knowledge_pages WHERE status = :status ORDER BY updated_at DESC LIMIT :limit`,
+          { status, limit },
+        )
+      : this.all<Record<string, unknown>>(
+          `SELECT * FROM knowledge_pages ORDER BY updated_at DESC LIMIT :limit`,
+          { limit },
+        );
+    return rows.map(mapKnowledgePage);
+  }
+
   createPromotionCandidate(candidate: PromotionCandidateView): void {
     this.run(`INSERT INTO promotion_candidates (candidate_id,claim_id,proposed_action,target_object_type,target_object_id,review_status,review_notes,created_at,updated_at)
       VALUES (:candidate_id,:claim_id,:proposed_action,:target_object_type,:target_object_id,:review_status,:review_notes,:created_at,:updated_at)
@@ -332,6 +352,13 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
   getPromotionCandidate(candidateId: string): PromotionCandidateView | undefined {
     const row = this.get<Record<string, unknown>>(`SELECT * FROM promotion_candidates WHERE candidate_id = :candidate_id LIMIT 1`, { candidate_id: candidateId });
     return row ? mapPromotionCandidate(row) : undefined;
+  }
+
+  listPromotionCandidates(limit = 10): readonly PromotionCandidateView[] {
+    return this.all<Record<string, unknown>>(
+      `SELECT * FROM promotion_candidates ORDER BY updated_at DESC LIMIT :limit`,
+      { limit },
+    ).map(mapPromotionCandidate);
   }
 
   reviewPromotionCandidate(
@@ -434,6 +461,41 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
       ? this.all<Record<string, unknown>>(`SELECT * FROM promoted_memories WHERE status = 'active' AND (subject_entity_id = :subject_entity_id OR subject_entity_id IS NULL) ORDER BY updated_at DESC LIMIT :limit`, { subject_entity_id: subjectEntityId, limit })
       : this.all<Record<string, unknown>>(`SELECT * FROM promoted_memories WHERE status = 'active' ORDER BY updated_at DESC LIMIT :limit`, { limit })
     ).map(mapPromotedMemory);
+  }
+
+  listOpenPreferenceContradictions(limit = 8, scopeRef?: string): readonly string[] {
+    const rows = scopeRef
+      ? this.all<PreferenceConflictRow>(
+          `SELECT key, subject_ref, json_group_array(DISTINCT value) as values_json, MAX(updated_at) as last_updated
+             FROM preferences
+            WHERE status = 'active'
+              AND (
+                subject_ref = :scope_ref
+                OR subject_ref LIKE :scope_prefix
+                OR subject_ref IS NULL
+              )
+            GROUP BY key, subject_ref
+           HAVING COUNT(DISTINCT value) > 1
+            ORDER BY last_updated DESC
+            LIMIT :limit`,
+          { scope_ref: scopeRef, scope_prefix: `${scopeRef}:%`, limit },
+        )
+      : this.all<PreferenceConflictRow>(
+          `SELECT key, subject_ref, json_group_array(DISTINCT value) as values_json, MAX(updated_at) as last_updated
+             FROM preferences
+            WHERE status = 'active'
+            GROUP BY key, subject_ref
+           HAVING COUNT(DISTINCT value) > 1
+            ORDER BY last_updated DESC
+            LIMIT :limit`,
+          { limit },
+        );
+
+    return rows.map((row) => {
+      const values = parseJsonArray(row.values_json);
+      const scope = row.subject_ref ?? 'workspace';
+      return `Preference conflict on ${scope}: ${row.key} -> ${values.join(' | ')}`;
+    });
   }
 
   summarizeGraph(options: GraphSummaryOptions): GraphContext {

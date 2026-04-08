@@ -102,6 +102,18 @@ export function synthesizeSessionPage(pack: SessionContextPack, store?: SqliteTr
       graphLinks.map((relationship) => `- ${relationship}`),
     ),
     ...renderBulletSection(
+      'Review queue',
+      pack.recent_changes.review_queue.map((item) => `- ${item}`),
+    ),
+    ...renderBulletSection(
+      'Open contradictions',
+      pack.recent_changes.open_contradictions.map((item) => `- ${item}`),
+    ),
+    ...renderBulletSection(
+      'Stale items',
+      pack.recent_changes.stale_items.map((item) => `- ${item}`),
+    ),
+    ...renderBulletSection(
       'Evidence bundles',
       pack.evidence_appendix.bundles.map((bundleId) => `- ${bundleId}`),
     ),

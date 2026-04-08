@@ -416,6 +416,19 @@ function rankPromotedMemories(
     .map((entry) => entry.value);
 }
 
+function buildReviewQueue(store: SqliteTruthKernelStorage): string[] {
+  return store
+    .listPromotionCandidates(8)
+    .filter((candidate) => candidate.status === 'pending_review' || candidate.status === 'needs_more_evidence')
+    .map((candidate) => `${candidate.candidate_id}: ${candidate.summary}`);
+}
+
+function buildStaleItems(store: SqliteTruthKernelStorage): string[] {
+  return store
+    .listKnowledgePages(8, 'stale')
+    .map((page) => `${page.page.page_id}: ${page.page.title}`);
+}
+
 function formatGraphRelationships(
   decisions: readonly TruthDecisionRecord[],
   preferences: readonly TruthPreferenceRecord[],
@@ -585,7 +598,9 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
           superseded: rankedDecisions
             .filter((decision) => decision.superseded_by !== null)
             .map((decision) => decision.decision_id),
-          open_contradictions: [],
+          open_contradictions: [...store.listOpenPreferenceContradictions(8, projectEntityId)],
+          review_queue: buildReviewQueue(store),
+          stale_items: buildStaleItems(store),
         },
         evidence_appendix: {
           enabled: false,
