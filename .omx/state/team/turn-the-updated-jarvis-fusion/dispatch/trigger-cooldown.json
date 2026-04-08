@@ -1,0 +1,16 @@
+{
+  "by_trigger": {
+    "Read .omx/state/team/turn-the-updated-jarvis-fusion/workers/worker-1/inbox.md, start work now, report concrete progress, then continue assigned work or next feasible task.": {
+      "at": 1775630918800,
+      "last_request_id": "7910c754-0e43-4edf-b4df-f36b3d9653b2"
+    },
+    "Read .omx/state/team/turn-the-updated-jarvis-fusion/workers/worker-2/inbox.md, start work now, report concrete progress, then continue assigned work or next feasible task.": {
+      "at": 1775630925803,
+      "last_request_id": "933a2310-00fc-45cc-b343-a913610899cf"
+    },
+    "Read .omx/state/team/turn-the-updated-jarvis-fusion/workers/worker-3/inbox.md, start work now, report concrete progress, then continue assigned work or next feasible task.": {
+      "at": 1775630932725,
+      "last_request_id": "47573caf-124b-4eb0-b4bb-80a88a935f62"
+    }
+  }
+}

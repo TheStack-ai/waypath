@@ -1,0 +1,16 @@
+{
+  "team_name": "turn-the-updated-jarvis-fusion",
+  "updated_at": "2026-04-08T06:50:20.283Z",
+  "source": "notify_hook",
+  "leader_decision_state": "still_actionable",
+  "leader_attention_pending": false,
+  "leader_attention_reason": null,
+  "attention_reasons": [],
+  "leader_stale": false,
+  "leader_session_active": true,
+  "leader_session_id": "omx-1775627176036-bghgvs",
+  "leader_session_stopped_at": null,
+  "unread_leader_message_count": 5,
+  "work_remaining": true,
+  "stalled_for_ms": null
+}

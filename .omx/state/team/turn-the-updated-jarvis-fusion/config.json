@@ -1,0 +1,58 @@
+{
+  "name": "turn-the-updated-jarvis-fusion",
+  "task": "Turn the updated Jarvis Fusion planning docs into an implementation-ready execution breakdown. Produce concrete next-step work packages, sequencing, milestone structure, and verification gates for the shared-backend + thin-host-shim architecture so the next implementation session can start immediately.",
+  "agent_type": "planner",
+  "worker_launch_mode": "interactive",
+  "lifecycle_profile": "default",
+  "worker_count": 3,
+  "max_workers": 20,
+  "workers": [
+    {
+      "name": "worker-1",
+      "index": 1,
+      "role": "planner",
+      "assigned_tasks": [],
+      "pane_id": "%74",
+      "pid": 67389,
+      "worker_cli": "codex",
+      "working_dir": "/Users/dd/Projects/jarvis-fusion-system",
+      "team_state_root": "/Users/dd/Projects/jarvis-fusion-system/.omx/state"
+    },
+    {
+      "name": "worker-2",
+      "index": 2,
+      "role": "planner",
+      "assigned_tasks": [],
+      "pane_id": "%75",
+      "pid": 67389,
+      "worker_cli": "codex",
+      "working_dir": "/Users/dd/Projects/jarvis-fusion-system",
+      "team_state_root": "/Users/dd/Projects/jarvis-fusion-system/.omx/state"
+    },
+    {
+      "name": "worker-3",
+      "index": 3,
+      "role": "planner",
+      "assigned_tasks": [],
+      "pane_id": "%76",
+      "pid": 67389,
+      "worker_cli": "codex",
+      "working_dir": "/Users/dd/Projects/jarvis-fusion-system",
+      "team_state_root": "/Users/dd/Projects/jarvis-fusion-system/.omx/state"
+    }
+  ],
+  "created_at": "2026-04-08T06:48:34.927Z",
+  "tmux_session": "omx-jarvis-fusion-system-detached-1775622330371-pkgkgk:3",
+  "next_task_id": 1,
+  "leader_cwd": "/Users/dd/Projects/jarvis-fusion-system",
+  "team_state_root": "/Users/dd/Projects/jarvis-fusion-system/.omx/state",
+  "workspace_mode": "single",
+  "worktree_mode": {
+    "enabled": false
+  },
+  "leader_pane_id": "%49",
+  "hud_pane_id": "%77",
+  "resize_hook_name": "omx_resize_turn-the-updated-jarvis-fusion_omx-jarvis-fusion-system-detached-1775622330371-pkgkgk_3_77",
+  "resize_hook_target": "omx-jarvis-fusion-system-detached-1775622330371-pkgkgk:3",
+  "next_worker_index": 4
+}
