@@ -118,7 +118,15 @@ export interface SessionContextPack {
   related_pages: PageReference[];
 }
 
-export type FacadeVerb = 'session-start' | 'recall' | 'page' | 'promote' | 'review';
+export type FacadeVerb =
+  | 'session-start'
+  | 'recall'
+  | 'page'
+  | 'promote'
+  | 'review'
+  | 'review-queue'
+  | 'inspect-page'
+  | 'inspect-candidate';
 
 export interface FacadeDescription {
   name: string;
@@ -174,6 +182,28 @@ export interface ReviewResult {
   candidate?: PromotionCandidateView;
 }
 
+export interface ReviewQueueResult {
+  operation: 'review-queue';
+  status: 'ready';
+  pending_review: PromotionCandidateView[];
+  stale_pages: PageReference[];
+  open_contradictions: string[];
+}
+
+export interface InspectPageResult {
+  operation: 'inspect-page';
+  status: 'ready' | 'missing';
+  message: string;
+  page?: StoredKnowledgePage;
+}
+
+export interface InspectCandidateResult {
+  operation: 'inspect-candidate';
+  status: 'ready' | 'missing';
+  message: string;
+  candidate?: PromotionCandidateView;
+}
+
 export interface FacadeApi {
   describe(): FacadeDescription;
   sessionStart(input: SessionStartInput): SessionStartResult;
@@ -181,6 +211,9 @@ export interface FacadeApi {
   page(subject: string): PageResult;
   promote(subject: string): PromoteResult;
   review(candidateId: string, status: PromotionCandidateView['status'], notes?: string): ReviewResult;
+  reviewQueue(): ReviewQueueResult;
+  inspectPage(pageId: string): InspectPageResult;
+  inspectCandidate(candidateId: string): InspectCandidateResult;
 }
 
 export interface SessionRuntime {

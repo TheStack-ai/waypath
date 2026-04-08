@@ -171,3 +171,57 @@ export function runReviewCliIntegrationTest(): void {
   assertEqual(reviewed.candidate?.status, 'accepted');
   assert(reviewed.candidate?.summary.includes('Reviewed and approved'), 'expected review notes in candidate summary');
 }
+
+export function runReviewQueueCliIntegrationTest(): void {
+  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-review-queue-`);
+  const storePath = `${root}/truth.db`;
+  const promoteCapture = captureIo();
+  const promoteExitCode = runCli(
+    ['promote', '--json', '--subject', 'queue me', '--store-path', storePath],
+    promoteCapture.io,
+  );
+  assertEqual(promoteExitCode, 0);
+
+  const queueCapture = captureIo();
+  const queueExitCode = runCli(['review-queue', '--json', '--store-path', storePath], queueCapture.io);
+  assertEqual(queueExitCode, 0);
+  const queue = JSON.parse(queueCapture.stdout.join('')) as {
+    status: string;
+    pending_review: { candidate_id: string }[];
+  };
+  assertEqual(queue.status, 'ready');
+  assert(queue.pending_review.some((candidate) => candidate.candidate_id.includes('promotion:queue-me')), 'expected queued candidate');
+}
+
+export function runInspectCliIntegrationTest(): void {
+  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-inspect-`);
+  const storePath = `${root}/truth.db`;
+  const pageCapture = captureIo();
+  assertEqual(runCli(['page', '--json', '--subject', 'inspect-project', '--store-path', storePath], pageCapture.io), 0);
+  const pageResult = JSON.parse(pageCapture.stdout.join('')) as {
+    page?: { page: { page_id: string } };
+  };
+
+  const pageInspectCapture = captureIo();
+  assertEqual(runCli(['inspect-page', '--json', '--page-id', pageResult.page!.page.page_id, '--store-path', storePath], pageInspectCapture.io), 0);
+  const inspectedPage = JSON.parse(pageInspectCapture.stdout.join('')) as {
+    status: string;
+    page?: { summary_markdown: string };
+  };
+  assertEqual(inspectedPage.status, 'ready');
+  assert(inspectedPage.page?.summary_markdown.includes('# inspect-project'), 'expected inspect-page markdown');
+
+  const promoteCapture = captureIo();
+  assertEqual(runCli(['promote', '--json', '--subject', 'inspect candidate', '--store-path', storePath], promoteCapture.io), 0);
+  const promoteResult = JSON.parse(promoteCapture.stdout.join('')) as {
+    candidate?: { candidate_id: string };
+  };
+  const candidateInspectCapture = captureIo();
+  assertEqual(runCli(['inspect-candidate', '--json', '--candidate-id', promoteResult.candidate!.candidate_id, '--store-path', storePath], candidateInspectCapture.io), 0);
+  const inspectedCandidate = JSON.parse(candidateInspectCapture.stdout.join('')) as {
+    status: string;
+    candidate?: { candidate_id: string };
+  };
+  assertEqual(inspectedCandidate.status, 'ready');
+  assertEqual(inspectedCandidate.candidate?.candidate_id, promoteResult.candidate?.candidate_id);
+}

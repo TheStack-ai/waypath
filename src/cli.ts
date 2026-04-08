@@ -227,6 +227,63 @@ export function runCli(argv: string[], io: CliIo): number {
     }
   }
 
+  if (parsed.command === 'review-queue') {
+    const facade = createFacade(facadeOptions);
+    try {
+      const result = facade.reviewQueue();
+      if (parsed.json) {
+        writeLine(io, JSON.stringify(result, null, 2));
+      } else {
+        writeLine(io, `pending-review=${result.pending_review.length}`);
+        writeLine(io, `stale-pages=${result.stale_pages.length}`);
+        writeLine(io, `contradictions=${result.open_contradictions.length}`);
+      }
+      return 0;
+    } finally {
+      facade.close();
+    }
+  }
+
+  if (parsed.command === 'inspect-page') {
+    if (!parsed.pageId) {
+      io.stderr.write('Missing value for --page-id\n');
+      io.stderr.write(`${formatUsage()}\n`);
+      return 1;
+    }
+    const facade = createFacade(facadeOptions);
+    try {
+      const result = facade.inspectPage(parsed.pageId);
+      if (parsed.json) {
+        writeLine(io, JSON.stringify(result, null, 2));
+      } else {
+        writeLine(io, result.page?.summary_markdown ?? result.message);
+      }
+      return result.status === 'ready' ? 0 : 1;
+    } finally {
+      facade.close();
+    }
+  }
+
+  if (parsed.command === 'inspect-candidate') {
+    if (!parsed.candidateId) {
+      io.stderr.write('Missing value for --candidate-id\n');
+      io.stderr.write(`${formatUsage()}\n`);
+      return 1;
+    }
+    const facade = createFacade(facadeOptions);
+    try {
+      const result = facade.inspectCandidate(parsed.candidateId);
+      if (parsed.json) {
+        writeLine(io, JSON.stringify(result, null, 2));
+      } else {
+        writeLine(io, result.candidate?.summary ?? result.message);
+      }
+      return result.status === 'ready' ? 0 : 1;
+    } finally {
+      facade.close();
+    }
+  }
+
   io.stderr.write(`Unknown command: ${parsed.command}\n`);
   io.stderr.write(`${formatUsage()}\n`);
   return 1;

@@ -9,6 +9,8 @@ import {
   runPromoteCliIntegrationTest,
   runRecallCliIntegrationTest,
   runReviewCliIntegrationTest,
+  runReviewQueueCliIntegrationTest,
+  runInspectCliIntegrationTest,
 } from './integration/codex-cli.test';
 import { runImportSeedCliIntegrationTest } from './integration/import-seed-cli.test';
 import {
@@ -32,6 +34,8 @@ const tests: TestCase[] = [
   { name: 'page cli integration', run: runPageCliIntegrationTest },
   { name: 'promote cli integration', run: runPromoteCliIntegrationTest },
   { name: 'review cli integration', run: runReviewCliIntegrationTest },
+  { name: 'review-queue cli integration', run: runReviewQueueCliIntegrationTest },
+  { name: 'inspect cli integration', run: runInspectCliIntegrationTest },
   { name: 'import-seed cli integration', run: runImportSeedCliIntegrationTest },
   { name: 'import-local cli integration', run: runImportLocalCliIntegrationTest },
   { name: 'source-status cli integration', run: runSourceStatusCliIntegrationTest },

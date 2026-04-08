@@ -14,6 +14,7 @@ export interface CliArgs {
   query?: string;
   subject?: string;
   candidateId?: string;
+  pageId?: string;
   status?: string;
   notes?: string;
   help: boolean;
@@ -40,6 +41,7 @@ export function createCliArgs(argv: string[]): CliArgs {
     if (token === '--query') { args.query = readValue(values, ++index, '--query'); continue; }
     if (token === '--subject') { args.subject = readValue(values, ++index, '--subject'); continue; }
     if (token === '--candidate-id') { args.candidateId = readValue(values, ++index, '--candidate-id'); continue; }
+    if (token === '--page-id') { args.pageId = readValue(values, ++index, '--page-id'); continue; }
     if (token === '--status') { args.status = readValue(values, ++index, '--status'); continue; }
     if (token === '--notes') { args.notes = readValue(values, ++index, '--notes'); continue; }
     throw new Error(`Unknown CLI flag: ${token}`);
@@ -64,6 +66,9 @@ export function formatUsage(): string {
     '  jarvis-fusion page --subject <text> [--json]',
     '  jarvis-fusion promote --subject <text> [--json]',
     '  jarvis-fusion review --candidate-id <id> --status <pending_review|accepted|rejected|needs_more_evidence|superseded> [--notes <text>] [--json]',
+    '  jarvis-fusion review-queue [--json] [--store-path <path>]',
+    '  jarvis-fusion inspect-page --page-id <id> [--json] [--store-path <path>]',
+    '  jarvis-fusion inspect-candidate --candidate-id <id> [--json] [--store-path <path>]',
     '  jarvis-fusion import-seed [--project <name>] [--store-path <path>] [--json]',
     '  jarvis-fusion import-local [--project <name>] [--store-path <path>] [--json]',
     '  jarvis-fusion source-status [--json]',

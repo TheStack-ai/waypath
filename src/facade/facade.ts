@@ -1,8 +1,11 @@
 import {
   type FacadeApi,
   type FacadeDescription,
+  type InspectCandidateResult,
+  type InspectPageResult,
   type PageResult,
   type PromoteResult,
+  type ReviewQueueResult,
   type ReviewResult,
   type RecallResult,
   type SessionRuntime,
@@ -29,7 +32,7 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
   const description: FacadeDescription = {
     name: 'jarvis-fusion-facade',
     host_shims: ['codex'],
-    verbs: ['session-start', 'recall', 'page', 'promote', 'review'],
+    verbs: ['session-start', 'recall', 'page', 'promote', 'review', 'review-queue', 'inspect-page', 'inspect-candidate'],
     access_layer: 'operator-facing',
     session_runtime: 'local-first',
   };
@@ -102,6 +105,49 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
         operation: 'review',
         status: 'ready',
         message: candidate.summary,
+        candidate,
+      };
+    },
+    reviewQueue(): ReviewQueueResult {
+      return {
+        operation: 'review-queue',
+        status: 'ready',
+        pending_review: store
+          .listPromotionCandidates(25)
+          .filter((candidate) => candidate.status === 'pending_review' || candidate.status === 'needs_more_evidence'),
+        stale_pages: store.listKnowledgePages(25, 'stale').map((page) => page.page),
+        open_contradictions: [...store.listOpenPreferenceContradictions(25)],
+      };
+    },
+    inspectPage(pageId: string): InspectPageResult {
+      const page = store.getKnowledgePage(pageId);
+      if (!page) {
+        return {
+          operation: 'inspect-page',
+          status: 'missing',
+          message: `Knowledge page not found: ${pageId}`,
+        };
+      }
+      return {
+        operation: 'inspect-page',
+        status: 'ready',
+        message: `Loaded knowledge page ${pageId}`,
+        page,
+      };
+    },
+    inspectCandidate(candidateId: string): InspectCandidateResult {
+      const candidate = store.getPromotionCandidate(candidateId);
+      if (!candidate) {
+        return {
+          operation: 'inspect-candidate',
+          status: 'missing',
+          message: `Promotion candidate not found: ${candidateId}`,
+        };
+      }
+      return {
+        operation: 'inspect-candidate',
+        status: 'ready',
+        message: `Loaded promotion candidate ${candidateId}`,
         candidate,
       };
     },

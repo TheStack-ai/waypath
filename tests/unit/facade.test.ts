@@ -11,7 +11,7 @@ export async function runFacadeUnitTest(): Promise<void> {
 
   assertEqual(description.name, 'jarvis-fusion-facade');
   assertDeepEqual(description.host_shims, ['codex']);
-  assertDeepEqual(description.verbs, ['session-start', 'recall', 'page', 'promote', 'review']);
+  assertDeepEqual(description.verbs, ['session-start', 'recall', 'page', 'promote', 'review', 'review-queue', 'inspect-page', 'inspect-candidate']);
 
   const session = facade.sessionStart({
     project: 'unit-project',
@@ -46,6 +46,18 @@ export async function runFacadeUnitTest(): Promise<void> {
   assertEqual(review.status, 'ready');
   assertEqual(review.candidate?.status, 'accepted');
   assert(review.candidate?.summary.includes('Approved for promotion'), 'expected persisted review notes');
+
+  const queue = facade.reviewQueue();
+  assertEqual(queue.status, 'ready');
+  assert(queue.pending_review.length === 0, 'expected accepted candidate to leave pending queue');
+
+  const pageInspect = facade.inspectPage('page:session:unit-project');
+  assertEqual(pageInspect.status, 'ready');
+  assert(pageInspect.page?.summary_markdown.includes('# unit-project'), 'expected page inspect result');
+
+  const candidateInspect = facade.inspectCandidate(promote.candidate!.candidate_id);
+  assertEqual(candidateInspect.status, 'ready');
+  assertEqual(candidateInspect.candidate?.status, 'accepted');
 
   facade.close();
 }
