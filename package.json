@@ -2,9 +2,16 @@
   "name": "jarvis-fusion-system",
   "version": "0.0.0",
   "private": true,
-  "type": "module",
+  "description": "Local-first JVM? Node/TypeScript skeleton for the Jarvis Fusion System.",
   "scripts": {
-    "test": "node --experimental-strip-types --test tests/bootstrap.test.ts",
-    "typecheck": "npx --yes -p typescript@5.8.3 tsc -p tsconfig.json --noEmit"
+    "build": "npx --yes --package typescript tsc -p tsconfig.json",
+    "typecheck": "npx --yes --package typescript tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node dist/tests/run-tests.js",
+    "start": "npm run build && node dist/src/cli.js",
+    "codex": "npm run build && node dist/src/cli.js codex --json",
+    "clean": "rm -rf dist"
+  },
+  "bin": {
+    "jarvis-fusion": "dist/src/cli.js"
   }
 }

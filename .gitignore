@@ -3,3 +3,5 @@
 .omx/metrics.json
 .omx/notepad.md
 .omx/project-memory.json
+
+dist/
