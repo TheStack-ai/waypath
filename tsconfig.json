@@ -14,7 +14,11 @@
     "skipLibCheck": true,
     "declaration": true,
     "resolveJsonModule": false,
-    "types": []
+    "types": [],
+    "ignoreDeprecations": "6.0"
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts"
+  ]
 }

@@ -1,12 +1,10 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 export const projectName = 'jarvis-fusion-system' as const;
 
-export function projectRoot(currentFileUrl: string = import.meta.url): string {
-  return resolve(dirname(fileURLToPath(currentFileUrl)), '..');
+export function projectRoot(currentDirectory: string = process.cwd()): string {
+  return currentDirectory;
 }
 
 export function createTempDir(prefix = 'jarvis-fusion-system-'): string {

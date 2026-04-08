@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createTempDir, projectName, projectRoot } from './bootstrap.ts';
+import { createTempDir, projectName, projectRoot } from './bootstrap';
 
 test('bootstrap exposes the repo root and project name', () => {
   assert.equal(projectName, 'jarvis-fusion-system');

@@ -1,6 +1,7 @@
 declare const process: {
   argv: string[];
   exitCode?: number;
+  cwd(): string;
   stdout: {
     write(chunk: string): void;
   };
