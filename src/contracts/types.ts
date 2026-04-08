@@ -48,8 +48,11 @@ export interface FacadeDescription {
   session_runtime: 'local-first';
 }
 
-export interface SessionStartInput extends Partial<SessionFocus> {
-  seedEntities?: string[];
+export interface SessionStartInput {
+  project?: string | undefined;
+  objective?: string | undefined;
+  activeTask?: string | undefined;
+  seedEntities?: string[] | undefined;
 }
 
 export interface SessionStartResult {
@@ -89,8 +92,8 @@ export interface SessionRuntime {
 }
 
 export interface CodexBootstrapInput extends SessionStartInput {
-  sessionId?: string;
-  command?: string;
+  sessionId?: string | undefined;
+  command?: string | undefined;
 }
 
 export interface CodexBootstrapResult {

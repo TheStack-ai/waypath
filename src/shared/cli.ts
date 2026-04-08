@@ -21,7 +21,10 @@ export function createCliArgs(argv: string[]): CliArgs {
 
   const values = [...argv];
   if (values.length > 0 && !values[0]!.startsWith('-')) {
-    args.command = values.shift();
+    const command = values.shift();
+    if (command) {
+      args.command = command;
+    }
   }
 
   for (let index = 0; index < values.length; index += 1) {
