@@ -42,6 +42,11 @@ interface GraphRelationshipRow {
   readonly weight: number | null;
 }
 
+interface ScoredValue<T> {
+  readonly value: T;
+  readonly score: number;
+}
+
 function dedupeBy<T>(values: readonly T[], getKey: (value: T) => string): T[] {
   const seen = new Set<string>();
   const deduped: T[] = [];
@@ -203,40 +208,259 @@ function buildEntityLabel(
   return entity ? `${entity.name} (${entity.entity_id})` : entityId;
 }
 
+function sourceSystemWeight(sourceSystem: string | null | undefined): number {
+  switch (sourceSystem) {
+    case 'truth-kernel':
+      return 1.2;
+    case 'jarvis-brain-db':
+      return 0.95;
+    case 'jarvis-memory-db':
+      return 0.85;
+    case 'demo-source':
+      return 0.35;
+    default:
+      return sourceSystem ? 0.6 : 0.5;
+  }
+}
+
+function sourceKindWeight(sourceKind: string | null | undefined): number {
+  switch (sourceKind) {
+    case 'decision':
+      return 0.8;
+    case 'preference':
+      return 0.75;
+    case 'relationship':
+      return 0.7;
+    case 'memory':
+      return 0.65;
+    case 'database':
+      return 0.4;
+    default:
+      return sourceKind ? 0.5 : 0.3;
+  }
+}
+
+function relationshipTypeWeight(relationType: string): number {
+  switch (relationType) {
+    case 'has_active_task':
+      return 3.2;
+    case 'uses_system':
+    case 'uses_host':
+    case 'uses_tool':
+      return 2.7;
+    case 'references_source':
+      return 2.5;
+    case 'supports':
+      return 2.2;
+    case 'works_at':
+    case 'leads':
+      return 1.8;
+    default:
+      return 1.1;
+  }
+}
+
+function recordProvenance(
+  store: SqliteTruthKernelStorage,
+  provenanceId: string | null | undefined,
+): ReturnType<SqliteTruthKernelStorage['getProvenance']> {
+  return provenanceId ? store.getProvenance(provenanceId) : undefined;
+}
+
+function entityProvenance(
+  store: SqliteTruthKernelStorage,
+  entity: TruthEntityRecord,
+): ReturnType<SqliteTruthKernelStorage['getProvenance']> {
+  try {
+    const parsed = JSON.parse(entity.state_json) as Record<string, unknown>;
+    const provenanceId = typeof parsed.provenance_id === 'string' ? parsed.provenance_id : null;
+    return recordProvenance(store, provenanceId);
+  } catch {
+    return undefined;
+  }
+}
+
+function entityCategoryWeight(entity: TruthEntityRecord, projectEntityId: string): number {
+  if (entity.entity_id === projectEntityId) return 6.5;
+  if (entity.entity_id.includes(':source:')) return 5.8;
+  switch (entity.entity_type) {
+    case 'task':
+      return 5.2;
+    case 'system':
+      return 4.8;
+    case 'project':
+      return 4.4;
+    case 'tool':
+      return 4.1;
+    case 'person':
+      return 3.7;
+    default:
+      return 3.3;
+  }
+}
+
+function rankEntities(
+  store: SqliteTruthKernelStorage,
+  entities: readonly TruthEntityRecord[],
+  relationships: readonly GraphRelationshipRow[],
+  projectEntityId: string,
+): readonly TruthEntityRecord[] {
+  const connectionCounts = new Map<string, number>();
+  for (const relationship of relationships) {
+    connectionCounts.set(
+      relationship.from_entity_id,
+      (connectionCounts.get(relationship.from_entity_id) ?? 0) + 1,
+    );
+    connectionCounts.set(
+      relationship.to_entity_id,
+      (connectionCounts.get(relationship.to_entity_id) ?? 0) + 1,
+    );
+  }
+
+  return entities
+    .map<ScoredValue<TruthEntityRecord>>((entity) => {
+      const provenance = entityProvenance(store, entity);
+      const score =
+        entityCategoryWeight(entity, projectEntityId) +
+        sourceSystemWeight(provenance?.source_system) +
+        sourceKindWeight(provenance?.source_kind) +
+        (provenance?.confidence ?? 0.5) +
+        (connectionCounts.get(entity.entity_id) ?? 0) * 0.45;
+      return { value: entity, score };
+    })
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return right.value.updated_at.localeCompare(left.value.updated_at);
+    })
+    .map((entry) => entry.value);
+}
+
+function rankDecisions(
+  store: SqliteTruthKernelStorage,
+  decisions: readonly TruthDecisionRecord[],
+  entityScores: ReadonlyMap<string, number>,
+): readonly TruthDecisionRecord[] {
+  return decisions
+    .map<ScoredValue<TruthDecisionRecord>>((decision) => {
+      const provenance = recordProvenance(store, decision.provenance_id);
+      const scopeScore = decision.scope_entity_id ? entityScores.get(decision.scope_entity_id) ?? 0 : 0;
+      return {
+        value: decision,
+        score:
+          4 +
+          sourceSystemWeight(provenance?.source_system) +
+          sourceKindWeight(provenance?.source_kind) +
+          (provenance?.confidence ?? 0.5) +
+          scopeScore * 0.18,
+      };
+    })
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return right.value.updated_at.localeCompare(left.value.updated_at);
+    })
+    .map((entry) => entry.value);
+}
+
+function rankPreferences(
+  store: SqliteTruthKernelStorage,
+  preferences: readonly TruthPreferenceRecord[],
+  entityScores: ReadonlyMap<string, number>,
+): readonly TruthPreferenceRecord[] {
+  return preferences
+    .map<ScoredValue<TruthPreferenceRecord>>((preference) => {
+      const provenance = recordProvenance(store, preference.provenance_id);
+      const subjectScore = preference.subject_ref ? entityScores.get(preference.subject_ref) ?? 0 : 0;
+      const strengthBoost =
+        preference.strength === 'high' ? 1.1 : preference.strength === 'medium' ? 0.7 : 0.3;
+      return {
+        value: preference,
+        score:
+          3.6 +
+          strengthBoost +
+          sourceSystemWeight(provenance?.source_system) +
+          sourceKindWeight(provenance?.source_kind) +
+          (provenance?.confidence ?? 0.5) +
+          subjectScore * 0.16,
+      };
+    })
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return right.value.updated_at.localeCompare(left.value.updated_at);
+    })
+    .map((entry) => entry.value);
+}
+
+function rankPromotedMemories(
+  store: SqliteTruthKernelStorage,
+  memories: readonly TruthPromotedMemoryRecord[],
+  entityScores: ReadonlyMap<string, number>,
+): readonly TruthPromotedMemoryRecord[] {
+  return memories
+    .map<ScoredValue<TruthPromotedMemoryRecord>>((memory) => {
+      const provenance = recordProvenance(store, memory.provenance_id);
+      const subjectScore = memory.subject_entity_id ? entityScores.get(memory.subject_entity_id) ?? 0 : 0;
+      return {
+        value: memory,
+        score:
+          3.4 +
+          sourceSystemWeight(provenance?.source_system) +
+          sourceKindWeight(provenance?.source_kind) +
+          (provenance?.confidence ?? 0.5) +
+          subjectScore * 0.14,
+      };
+    })
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return right.value.updated_at.localeCompare(left.value.updated_at);
+    })
+    .map((entry) => entry.value);
+}
+
 function formatGraphRelationships(
   decisions: readonly TruthDecisionRecord[],
   preferences: readonly TruthPreferenceRecord[],
   promotedMemories: readonly TruthPromotedMemoryRecord[],
   persistedRelationships: readonly GraphRelationshipRow[],
   entitiesById: ReadonlyMap<string, TruthEntityRecord>,
+  entityScores: ReadonlyMap<string, number>,
 ): string[] {
   const relationshipSummaries = [
-    ...persistedRelationships.map((relationship) => {
+    ...persistedRelationships.map<ScoredValue<string>>((relationship) => {
       const from = buildEntityLabel(relationship.from_entity_id, entitiesById);
       const to = buildEntityLabel(relationship.to_entity_id, entitiesById);
-      return `${from} -[${relationship.relation_type}]-> ${to}`;
+      const endpointScore =
+        (entityScores.get(relationship.from_entity_id) ?? 0) +
+        (entityScores.get(relationship.to_entity_id) ?? 0);
+      return {
+        value: `${from} -[${relationship.relation_type}]-> ${to}`,
+        score: relationshipTypeWeight(relationship.relation_type) + (relationship.weight ?? 0) + endpointScore * 0.08,
+      };
     }),
     ...decisions
       .filter((decision) => decision.scope_entity_id !== null)
-      .map(
-        (decision) =>
-          `Decision "${decision.title}" scoped to ${buildEntityLabel(decision.scope_entity_id!, entitiesById)}`,
-      ),
+      .map<ScoredValue<string>>((decision) => ({
+        value: `Decision "${decision.title}" scoped to ${buildEntityLabel(decision.scope_entity_id!, entitiesById)}`,
+        score: 2.6 + (entityScores.get(decision.scope_entity_id!) ?? 0) * 0.1,
+      })),
     ...preferences
       .filter((preference) => preference.subject_ref !== null)
-      .map(
-        (preference) =>
-          `Preference "${preference.key}=${preference.value}" applies to ${buildEntityLabel(preference.subject_ref!, entitiesById)}`,
-      ),
+      .map<ScoredValue<string>>((preference) => ({
+        value: `Preference "${preference.key}=${preference.value}" applies to ${buildEntityLabel(preference.subject_ref!, entitiesById)}`,
+        score: 2.2 + (entityScores.get(preference.subject_ref!) ?? 0) * 0.08,
+      })),
     ...promotedMemories
       .filter((memory) => memory.subject_entity_id !== null)
-      .map(
-        (memory) =>
-          `Memory "${memory.summary}" linked to ${buildEntityLabel(memory.subject_entity_id!, entitiesById)}`,
-      ),
+      .map<ScoredValue<string>>((memory) => ({
+        value: `Memory "${memory.summary}" linked to ${buildEntityLabel(memory.subject_entity_id!, entitiesById)}`,
+        score: 1.9 + (entityScores.get(memory.subject_entity_id!) ?? 0) * 0.06,
+      })),
   ];
 
-  return uniqueStrings(relationshipSummaries);
+  return uniqueStrings(
+    relationshipSummaries
+      .sort((left, right) => right.score - left.score)
+      .map((entry) => entry.value),
+  );
 }
 
 function expandSnapshot(
@@ -303,24 +527,37 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
 
       const snapshot = loadSessionStartSnapshot(store, { projectEntityId });
       const expanded = expandSnapshot(store, snapshot, projectEntityId);
+      const rankedEntities = rankEntities(
+        store,
+        expanded.entities,
+        expanded.persistedRelationships,
+        projectEntityId,
+      );
+      const entityScores = new Map(
+        rankedEntities.map((entity, index) => [entity.entity_id, rankedEntities.length - index] as const),
+      );
+      const rankedDecisions = rankDecisions(store, expanded.decisions, entityScores);
+      const rankedPreferences = rankPreferences(store, expanded.preferences, entityScores);
+      const rankedPromotedMemories = rankPromotedMemories(store, expanded.promotedMemories, entityScores);
       const entitiesById = new Map(
-        expanded.entities.map((entity) => [entity.entity_id, entity] as const),
+        rankedEntities.map((entity) => [entity.entity_id, entity] as const),
       );
       const relatedEntityIds = uniqueStrings([
         ...seedEntities,
-        ...expanded.entities.map((entity) => entity.entity_id),
+        ...rankedEntities.map((entity) => entity.entity_id),
         ...expanded.persistedRelationships.flatMap((relationship) => [
           relationship.from_entity_id,
           relationship.to_entity_id,
         ]),
       ]);
-      const relatedEntityNames = expanded.entities.map((entity) => entity.name);
+      const relatedEntityNames = rankedEntities.map((entity) => entity.name);
       const graphRelationships = formatGraphRelationships(
-        expanded.decisions,
-        expanded.preferences,
-        expanded.promotedMemories,
+        rankedDecisions,
+        rankedPreferences,
+        rankedPromotedMemories,
         expanded.persistedRelationships,
         entitiesById,
+        entityScores,
       );
 
       return {
@@ -330,22 +567,22 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
           activeTask,
         },
         truth_highlights: {
-          decisions: expanded.decisions.map((decision) => decision.title),
-          preferences: expanded.preferences.map((preference) => `${preference.key}=${preference.value}`),
-          entities: relatedEntityNames,
-          promoted_memories: expanded.promotedMemories.map((memory) => memory.summary),
+          decisions: rankedDecisions.slice(0, 6).map((decision) => decision.title),
+          preferences: rankedPreferences.slice(0, 6).map((preference) => `${preference.key}=${preference.value}`),
+          entities: relatedEntityNames.slice(0, 8),
+          promoted_memories: rankedPromotedMemories.slice(0, 6).map((memory) => memory.summary),
         },
         graph_context: {
           seed_entities:
             seedEntities.length > 0
               ? seedEntities
-              : uniqueStrings([projectEntityId, ...expanded.entities.map((entity) => entity.entity_id)]),
-          related_entities: relatedEntityIds,
-          relationships: graphRelationships,
+              : uniqueStrings([projectEntityId, ...rankedEntities.slice(0, 4).map((entity) => entity.entity_id)]),
+          related_entities: relatedEntityIds.slice(0, 12),
+          relationships: graphRelationships.slice(0, 12),
         },
         recent_changes: {
-          recent_promotions: expanded.promotedMemories.map((memory) => memory.memory_id),
-          superseded: expanded.decisions
+          recent_promotions: rankedPromotedMemories.map((memory) => memory.memory_id),
+          superseded: rankedDecisions
             .filter((decision) => decision.superseded_by !== null)
             .map((decision) => decision.decision_id),
           open_contradictions: [],

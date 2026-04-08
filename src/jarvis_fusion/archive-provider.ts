@@ -60,6 +60,38 @@ function metadataStringValue(metadata: Record<string, unknown>, key: string): st
   return typeof value === 'string' ? value : null;
 }
 
+function sourceSystemWeight(sourceSystem: string | null | undefined): number {
+  switch (sourceSystem) {
+    case 'truth-kernel':
+      return 1.1;
+    case 'jarvis-brain-db':
+      return 0.95;
+    case 'jarvis-memory-db':
+      return 0.85;
+    case 'demo-source':
+      return 0.3;
+    default:
+      return sourceSystem ? 0.5 : 0.4;
+  }
+}
+
+function sourceKindWeight(sourceKind: string | null | undefined): number {
+  switch (sourceKind) {
+    case 'decision':
+      return 0.8;
+    case 'preference':
+      return 0.75;
+    case 'relationship':
+      return 0.65;
+    case 'memory':
+      return 0.6;
+    case 'database':
+      return 0.35;
+    default:
+      return sourceKind ? 0.45 : 0.25;
+  }
+}
+
 function toItem(
   kind: ArchiveRecordKind,
   id: string,
@@ -214,7 +246,12 @@ function scoreItem(item: EvidenceItem, tokens: readonly string[]): number {
     return 0;
   }
 
-  return score + (item.confidence ?? 0);
+  return (
+    score +
+    (item.confidence ?? 0) +
+    sourceSystemWeight(metadataStringValue(item.metadata, 'source_system')) +
+    sourceKindWeight(metadataStringValue(item.metadata, 'source_kind'))
+  );
 }
 
 function sortRankedItems(items: readonly RankedEvidenceItem[]): EvidenceItem[] {

@@ -138,6 +138,7 @@ export function runSessionRuntimeUnitTest(): void {
     pack.truth_highlights.entities.includes('Codex CLI'),
     'expected graph-linked entity in truth highlights',
   );
+  assertEqual(pack.truth_highlights.entities[0], 'demo-project', 'expected project entity to stay highest priority');
   assertDeepEqual(pack.graph_context.seed_entities, ['entity-a', 'entity-b']);
   assert(
     pack.graph_context.related_entities.includes('project:demo-project:imported'),
@@ -156,6 +157,10 @@ export function runSessionRuntimeUnitTest(): void {
       relationship.includes('Bridge imported references into session context'),
     ),
     'expected derived decision graph summary',
+  );
+  assert(
+    pack.graph_context.relationships[0]?.includes('has_active_task'),
+    'expected operational relationship to be prioritized first',
   );
   assertEqual(pack.evidence_appendix.enabled, false);
 

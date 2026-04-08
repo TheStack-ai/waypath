@@ -17,6 +17,16 @@ function renderBulletSection(title: string, items: readonly string[]): string[] 
   ];
 }
 
+function orderByPreferredLabels(values: readonly string[], preferredLabels: readonly string[]): string[] {
+  const order = new Map(preferredLabels.map((label, index) => [label, index] as const));
+  return [...values].sort((left, right) => {
+    const leftIndex = order.get(left) ?? Number.MAX_SAFE_INTEGER;
+    const rightIndex = order.get(right) ?? Number.MAX_SAFE_INTEGER;
+    if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+    return left.localeCompare(right);
+  });
+}
+
 export function synthesizeSessionPage(pack: SessionContextPack, store?: SqliteTruthKernelStorage): StoredKnowledgePage {
   const projectEntityId = `project:${pack.current_focus.project}`;
   const relatedEntityIds = uniqueStrings(pack.graph_context.related_entities);
@@ -26,8 +36,37 @@ export function synthesizeSessionPage(pack: SessionContextPack, store?: SqliteTr
         .map((entityId) => store.getEntity(entityId))
         .filter((entity): entity is Exclude<typeof entity, undefined> => entity !== undefined)
     : [];
-  const persistedDecisions = store ? [...store.listActiveDecisions(10, projectEntityId)] : [];
-  const persistedPreferences = store ? [...store.listActivePreferences(10, projectEntityId)] : [];
+  const decisionOrder = new Map(
+    pack.truth_highlights.decisions.map((title, index) => [title, index] as const),
+  );
+  const preferenceOrder = new Map(
+    pack.truth_highlights.preferences.map((preference, index) => [preference, index] as const),
+  );
+  const persistedDecisions = store
+    ? [...store.listActiveDecisions(10, projectEntityId)].sort((left, right) => {
+        const leftIndex = decisionOrder.get(left.title) ?? Number.MAX_SAFE_INTEGER;
+        const rightIndex = decisionOrder.get(right.title) ?? Number.MAX_SAFE_INTEGER;
+        if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+        return right.updated_at.localeCompare(left.updated_at);
+      })
+    : [];
+  const persistedPreferences = store
+    ? [...store.listActivePreferences(10, projectEntityId)].sort((left, right) => {
+        const leftKey = `${left.key}=${left.value}`;
+        const rightKey = `${right.key}=${right.value}`;
+        const leftIndex = preferenceOrder.get(leftKey) ?? Number.MAX_SAFE_INTEGER;
+        const rightIndex = preferenceOrder.get(rightKey) ?? Number.MAX_SAFE_INTEGER;
+        if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+        return right.updated_at.localeCompare(left.updated_at);
+      })
+    : [];
+  const preferredEntities = orderByPreferredLabels(
+    persistedEntities.map((entity) => entity.name),
+    pack.truth_highlights.entities,
+  );
+  const sortedEntities = preferredEntities
+    .map((name) => persistedEntities.find((entity) => entity.name === name))
+    .filter((entity): entity is Exclude<typeof entity, undefined> => Boolean(entity));
   const graphLinks = uniqueStrings(pack.graph_context.relationships);
 
   const summaryLines = [
@@ -50,8 +89,8 @@ export function synthesizeSessionPage(pack: SessionContextPack, store?: SqliteTr
     ),
     ...renderBulletSection(
       'Related entities',
-      persistedEntities.length > 0
-        ? persistedEntities.map((entity) => `- **${entity.name}** (${entity.entity_type}) — ${entity.summary}`)
+      sortedEntities.length > 0
+        ? sortedEntities.map((entity) => `- **${entity.name}** (${entity.entity_type}) — ${entity.summary}`)
         : pack.truth_highlights.entities.map((entity) => `- ${entity}`),
     ),
     ...renderBulletSection(

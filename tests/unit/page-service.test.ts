@@ -70,6 +70,10 @@ export function runPageServiceUnitTest(): void {
   assert(page.summary_markdown.includes('shared backend with thin host shims'), 'expected persisted decision statement');
   assert(page.summary_markdown.includes('Thin operator-facing shim for Codex bootstrap and page flows.'), 'expected persisted entity summary');
   assert(page.summary_markdown.includes('Session-start context packs should come from persisted SQLite truth data.'), 'expected promoted memories section');
+  assert(
+    page.summary_markdown.indexOf('**graph-project**') < page.summary_markdown.indexOf('**Codex host shim**'),
+    'expected page entity section to preserve prioritized session ordering',
+  );
   assertEqual(page.linked_decision_ids[0], 'decision:graph-project:shared-backend-host-shims');
   assert(page.linked_entity_ids.includes('entity:codex-host'), 'expected persisted entity linkage');
 
