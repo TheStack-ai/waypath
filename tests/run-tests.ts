@@ -1,12 +1,14 @@
 import { runFacadeUnitTest } from './unit/facade.test';
 import { runSessionRuntimeUnitTest } from './unit/session-runtime.test';
 import { runTruthKernelUnitTest } from './unit/truth-kernel.test';
+import { runSourceReaderBootstrapUnitTest } from './unit/source-reader-bootstrap.test';
 import {
   runCodexCliIntegrationTest,
   runPageCliIntegrationTest,
   runPromoteCliIntegrationTest,
   runRecallCliIntegrationTest,
 } from './integration/codex-cli.test';
+import { runImportSeedCliIntegrationTest } from './integration/import-seed-cli.test';
 
 interface TestCase {
   name: string;
@@ -17,10 +19,12 @@ const tests: TestCase[] = [
   { name: 'facade unit', run: runFacadeUnitTest },
   { name: 'session runtime unit', run: runSessionRuntimeUnitTest },
   { name: 'truth-kernel unit', run: runTruthKernelUnitTest },
+  { name: 'source-reader bootstrap unit', run: runSourceReaderBootstrapUnitTest },
   { name: 'codex cli integration', run: runCodexCliIntegrationTest },
   { name: 'recall cli integration', run: runRecallCliIntegrationTest },
   { name: 'page cli integration', run: runPageCliIntegrationTest },
   { name: 'promote cli integration', run: runPromoteCliIntegrationTest },
+  { name: 'import-seed cli integration', run: runImportSeedCliIntegrationTest },
 ];
 
 async function main(): Promise<void> {

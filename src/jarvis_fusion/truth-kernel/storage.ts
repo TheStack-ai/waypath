@@ -215,6 +215,13 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
       ON CONFLICT(decision_id) DO UPDATE SET title=excluded.title,statement=excluded.statement,status=excluded.status,scope_entity_id=excluded.scope_entity_id,effective_at=excluded.effective_at,superseded_by=excluded.superseded_by,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
   }
 
+  upsertProvenance(record: { provenance_id: string; source_system: string; source_kind: string; source_ref: string; observed_at: string | null; imported_at: string | null; promoted_at: string | null; promoted_by: string | null; confidence: number | null; notes: string | null; }): string {
+    this.run(`INSERT INTO provenance_records (provenance_id,source_system,source_kind,source_ref,observed_at,imported_at,promoted_at,promoted_by,confidence,notes)
+      VALUES (:provenance_id,:source_system,:source_kind,:source_ref,:observed_at,:imported_at,:promoted_at,:promoted_by,:confidence,:notes)
+      ON CONFLICT(provenance_id) DO UPDATE SET source_system=excluded.source_system,source_kind=excluded.source_kind,source_ref=excluded.source_ref,observed_at=excluded.observed_at,imported_at=excluded.imported_at,promoted_at=excluded.promoted_at,promoted_by=excluded.promoted_by,confidence=excluded.confidence,notes=excluded.notes`, asParams(record));
+    return record.provenance_id;
+  }
+
   upsertPreference(record: TruthPreferenceRecord): void {
     this.run(`INSERT INTO preferences (preference_id,subject_kind,subject_ref,key,value,strength,status,provenance_id,created_at,updated_at)
       VALUES (:preference_id,:subject_kind,:subject_ref,:key,:value,:strength,:status,:provenance_id,:created_at,:updated_at)
@@ -267,6 +274,24 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
   getPromotionCandidate(candidateId: string): PromotionCandidateView | undefined {
     const row = this.get<Record<string, unknown>>(`SELECT * FROM promotion_candidates WHERE candidate_id = :candidate_id LIMIT 1`, { candidate_id: candidateId });
     return row ? mapPromotionCandidate(row) : undefined;
+  }
+
+
+  getProvenance(provenanceId: string) {
+    const row = this.get<Record<string, unknown>>(`SELECT * FROM provenance_records WHERE provenance_id = :provenance_id LIMIT 1`, { provenance_id: provenanceId });
+    if (!row) return undefined;
+    return {
+      provenance_id: String(row.provenance_id),
+      source_system: String(row.source_system),
+      source_kind: String(row.source_kind),
+      source_ref: String(row.source_ref),
+      observed_at: row.observed_at === null ? null : String(row.observed_at),
+      imported_at: row.imported_at === null ? null : String(row.imported_at),
+      promoted_at: row.promoted_at === null ? null : String(row.promoted_at),
+      promoted_by: row.promoted_by === null ? null : String(row.promoted_by),
+      confidence: typeof row.confidence === 'number' ? row.confidence : null,
+      notes: row.notes === null ? null : String(row.notes),
+    };
   }
 
   getEntity(entityId: string): TruthEntityRecord | undefined {

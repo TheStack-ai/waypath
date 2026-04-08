@@ -1,3 +1,5 @@
+import { runBootstrapImport, toImportResult } from './jarvis_fusion/bootstrap-import.js';
+import { createTruthKernelStorage, defaultTruthKernelStoreLocation } from './jarvis_fusion/truth-kernel/index.js';
 import { createFacade } from './facade';
 import { createCodexHostShim } from './host-shims';
 import { createCliArgs, formatUsage, writeLine, type CliIo } from './shared/cli';
@@ -71,6 +73,23 @@ export function runCli(argv: string[], io: CliIo): number {
       writeLine(io, JSON.stringify(result, null, 2));
     } else {
       writeLine(io, result.page?.summary_markdown ?? result.message);
+    }
+    return 0;
+  }
+
+
+  if (parsed.command === 'import-seed') {
+    const project = parsed.project ?? 'jarvis-fusion-system';
+    const storePath = parsed.storePath ?? defaultTruthKernelStoreLocation();
+    const store = createTruthKernelStorage(storePath, { autoMigrate: true });
+    const result = toImportResult(
+      runBootstrapImport(store, { manifest_id: `demo-import:${project}`, import_mode: 'bootstrap', reader_names: ['demo-source'] }, project),
+      storePath,
+    );
+    if (parsed.json) {
+      writeLine(io, JSON.stringify(result, null, 2));
+    } else {
+      writeLine(io, result.message);
     }
     return 0;
   }

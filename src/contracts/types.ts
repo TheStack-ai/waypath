@@ -1,4 +1,5 @@
 export type HostName = 'codex';
+export type ImportMode = 'bootstrap' | 'manual' | 'reimport';
 
 export interface SessionFocus {
   project: string;
@@ -71,6 +72,26 @@ export interface PromotionCandidateView {
   created_at: string;
 }
 
+export interface ImportCounts {
+  provenance: number;
+  entities: number;
+  decisions: number;
+  preferences: number;
+  promoted_memories: number;
+  promoted_candidates: number;
+}
+
+export interface ImportResult {
+  operation: 'import';
+  status: 'imported';
+  mode: ImportMode;
+  manifest_id: string;
+  imported_at: string;
+  store_path: string;
+  counts: ImportCounts;
+  message: string;
+}
+
 export interface SessionContextPack {
   current_focus: SessionFocus;
   truth_highlights: TruthHighlights;
@@ -107,7 +128,7 @@ export interface RecallResult {
   operation: 'recall';
   status: 'ready' | 'stub';
   message: string;
-  bundle?: Promise<EvidenceBundle> | EvidenceBundle;
+  bundle?: EvidenceBundle;
 }
 
 export interface PageView {

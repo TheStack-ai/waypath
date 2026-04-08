@@ -17,57 +17,25 @@ export interface CliArgs {
 }
 
 export function createCliArgs(argv: string[]): CliArgs {
-  const args: CliArgs = {
-    json: false,
-    help: false,
-  };
-
+  const args: CliArgs = { json: false, help: false };
   const values = [...argv];
+
   if (values.length > 0 && !values[0]!.startsWith('-')) {
     const command = values.shift();
-    if (command) {
-      args.command = command;
-    }
+    if (command) args.command = command;
   }
 
   for (let index = 0; index < values.length; index += 1) {
     const token = values[index]!;
-    if (token === '--json') {
-      args.json = true;
-      continue;
-    }
-    if (token === '--help' || token === '-h') {
-      args.help = true;
-      continue;
-    }
-    if (token === '--project') {
-      args.project = readValue(values, ++index, '--project');
-      continue;
-    }
-    if (token === '--objective') {
-      args.objective = readValue(values, ++index, '--objective');
-      continue;
-    }
-    if (token === '--task') {
-      args.task = readValue(values, ++index, '--task');
-      continue;
-    }
-    if (token === '--session-id') {
-      args.sessionId = readValue(values, ++index, '--session-id');
-      continue;
-    }
-    if (token === '--store-path') {
-      args.storePath = readValue(values, ++index, '--store-path');
-      continue;
-    }
-    if (token === '--query') {
-      args.query = readValue(values, ++index, '--query');
-      continue;
-    }
-    if (token === '--subject') {
-      args.subject = readValue(values, ++index, '--subject');
-      continue;
-    }
+    if (token === '--json') { args.json = true; continue; }
+    if (token === '--help' || token === '-h') { args.help = true; continue; }
+    if (token === '--project') { args.project = readValue(values, ++index, '--project'); continue; }
+    if (token === '--objective') { args.objective = readValue(values, ++index, '--objective'); continue; }
+    if (token === '--task') { args.task = readValue(values, ++index, '--task'); continue; }
+    if (token === '--session-id') { args.sessionId = readValue(values, ++index, '--session-id'); continue; }
+    if (token === '--store-path') { args.storePath = readValue(values, ++index, '--store-path'); continue; }
+    if (token === '--query') { args.query = readValue(values, ++index, '--query'); continue; }
+    if (token === '--subject') { args.subject = readValue(values, ++index, '--subject'); continue; }
     throw new Error(`Unknown CLI flag: ${token}`);
   }
 
@@ -76,9 +44,7 @@ export function createCliArgs(argv: string[]): CliArgs {
 
 function readValue(values: string[], index: number, flag: string): string {
   const value = values[index];
-  if (!value || value.startsWith('-')) {
-    throw new Error(`Missing value for ${flag}`);
-  }
+  if (!value || value.startsWith('-')) throw new Error(`Missing value for ${flag}`);
   return value;
 }
 
@@ -91,6 +57,7 @@ export function formatUsage(): string {
     '  jarvis-fusion recall --query <text> [--json]',
     '  jarvis-fusion page --subject <text> [--json]',
     '  jarvis-fusion promote --subject <text> [--json]',
+    '  jarvis-fusion import-seed [--project <name>] [--store-path <path>] [--json]',
     '  jarvis-fusion --help',
   ].join('\n');
 }
