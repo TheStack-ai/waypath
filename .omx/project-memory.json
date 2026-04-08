@@ -1,9 +1,0 @@
-{
-  "notes": [
-    {
-      "category": "env",
-      "content": "2026-04-08: OMX team Codex workers can fail at startup when codex_apps/chatgpt connector endpoints return 503 or text/plain upstream errors. Verified worker startup succeeds when launched with feature overrides disabling apps/plugins: OMX_TEAM_WORKER_LAUNCH_ARGS='-c features.apps=false -c features.plugins=false'. This keeps planning/review workers alive without codex_apps.",
-      "timestamp": "2026-04-08T06:23:32.143Z"
-    }
-  ]
-}

@@ -1,0 +1,5 @@
+.omx/logs/
+.omx/state/
+.omx/metrics.json
+.omx/notepad.md
+.omx/project-memory.json

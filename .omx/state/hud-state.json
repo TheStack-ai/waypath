@@ -1,6 +1,0 @@
-{
-  "last_turn_at": "2026-04-08T06:50:20.269Z",
-  "last_progress_at": "2026-04-08T06:50:20.269Z",
-  "turn_count": 10,
-  "last_agent_output": "- summary:\n  - Command `tmux capture-pane -t \"%75\" -p -S -220` completed with exit code `0` and prod"
-}
