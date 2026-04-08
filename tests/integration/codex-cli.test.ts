@@ -74,6 +74,9 @@ export function runCodexCliIntegrationTest(): void {
   );
   assertEqual(result.session.context_pack.evidence_appendix.enabled, true);
   assert(result.session.context_pack.evidence_appendix.bundles.length > 0, 'expected evidence appendix bundle ids');
+  const store = createTruthKernelStorage(storePath);
+  assert(store.getEvidenceBundle(result.session.context_pack.evidence_appendix.bundles[0]!)?.items.length, 'expected persisted session evidence bundle');
+  store.close();
 }
 
 export function runRecallCliIntegrationTest(): void {
@@ -90,7 +93,7 @@ export function runRecallCliIntegrationTest(): void {
   assertEqual(exitCode, 0);
   const result = JSON.parse(captured.stdout.join('')) as {
     status: string;
-    bundle?: { items: { title: string }[] };
+    bundle?: { bundle_id: string; items: { title: string }[] };
   };
   assertEqual(result.status, 'ready');
   assert((result.bundle?.items.length ?? 0) > 0, 'expected recall bundle items');
@@ -98,6 +101,9 @@ export function runRecallCliIntegrationTest(): void {
     result.bundle?.items.some((item) => item.title.includes('Decision: Keep source readers read-only')),
     'expected truth-backed recall evidence',
   );
+  const store = createTruthKernelStorage(storePath);
+  assert(store.getEvidenceBundle(result.bundle!.bundle_id)?.items.length, 'expected persisted recall evidence bundle');
+  store.close();
 }
 
 export function runPageCliIntegrationTest(): void {

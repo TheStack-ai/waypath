@@ -167,6 +167,15 @@ export const TRUTH_KERNEL_MIGRATIONS: readonly string[] = [
   )
   `,
   `
+  CREATE TABLE IF NOT EXISTS evidence_bundles (
+    bundle_id TEXT PRIMARY KEY,
+    query TEXT NOT NULL,
+    bundle_json TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )
+  `,
+  `
   CREATE INDEX IF NOT EXISTS idx_entities_status_updated_at
   ON entities(status, updated_at DESC)
   `,
@@ -201,6 +210,10 @@ export const TRUTH_KERNEL_MIGRATIONS: readonly string[] = [
   `
   CREATE INDEX IF NOT EXISTS idx_knowledge_pages_status_updated_at
   ON knowledge_pages(status, updated_at DESC)
+  `,
+  `
+  CREATE INDEX IF NOT EXISTS idx_evidence_bundles_updated_at
+  ON evidence_bundles(updated_at DESC)
   `,
 ] as const;
 

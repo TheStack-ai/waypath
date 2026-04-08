@@ -58,6 +58,7 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
     },
     recall(query: string): RecallResult {
       const bundle = buildLocalArchiveBundle(query, store);
+      store.upsertEvidenceBundle(bundle);
       return {
         operation: 'recall',
         status: 'ready',
@@ -170,6 +171,7 @@ function withEvidenceAppendix(
   store: ReturnType<typeof createTruthKernelStorage>,
 ): SessionStartResult['context_pack'] {
   const evidenceBundle = buildLocalArchiveBundle(query, store);
+  store.upsertEvidenceBundle(evidenceBundle);
   return evidenceBundle.items.length > 0
     ? {
         ...pack,

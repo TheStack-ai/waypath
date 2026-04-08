@@ -54,6 +54,7 @@ export async function runFacadeUnitTest(): Promise<void> {
   const pageInspect = facade.inspectPage('page:session:unit-project');
   assertEqual(pageInspect.status, 'ready');
   assert(pageInspect.page?.summary_markdown.includes('# unit-project'), 'expected page inspect result');
+  assert(pageInspect.page?.linked_evidence_bundle_ids.length, 'expected persisted page evidence bundle ids');
 
   const candidateInspect = facade.inspectCandidate(promote.candidate!.candidate_id);
   assertEqual(candidateInspect.status, 'ready');

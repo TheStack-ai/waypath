@@ -89,5 +89,24 @@ export function runTruthKernelUnitTest(): void {
   assertEqual(reviewed?.status, 'accepted');
   assert(reviewed?.summary.includes('Promotion approved'), 'expected persisted review note');
 
+  store.upsertEvidenceBundle({
+    bundle_id: 'bundle:test',
+    query: 'shared backend',
+    generated_at: new Date().toISOString(),
+    items: [
+      {
+        evidence_id: 'evidence:test',
+        source_ref: 'truth:test',
+        title: 'Decision: shared backend',
+        excerpt: 'Use the shared backend.',
+        observed_at: null,
+        confidence: 0.9,
+        metadata: { source_system: 'truth-kernel', source_kind: 'decision' },
+      },
+    ],
+  });
+  assertEqual(store.getEvidenceBundle('bundle:test')?.items[0]?.title, 'Decision: shared backend');
+  assertEqual(store.countTable('evidence_bundles'), 1);
+
   store.close();
 }

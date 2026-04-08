@@ -14,7 +14,7 @@ import type {
   TruthPromotedMemoryRecord,
   TruthRelationshipRecord,
 } from '../contracts.js';
-import type { PromotionCandidateView, StoredKnowledgePage } from '../../contracts/index.js';
+import type { EvidenceBundle, PromotionCandidateView, StoredKnowledgePage } from '../../contracts/index.js';
 import { TRUTH_KERNEL_SCHEMA_VERSION, buildTruthKernelMigrationSql } from './schema.js';
 
 export interface SqliteTruthKernelStoreOptions {
@@ -171,6 +171,10 @@ function mapKnowledgePage(row: Record<string, unknown>): StoredKnowledgePage {
   };
 }
 
+function mapEvidenceBundle(row: Record<string, unknown>): EvidenceBundle {
+  return JSON.parse(String(row.bundle_json)) as EvidenceBundle;
+}
+
 function mapPromotionCandidate(row: Record<string, unknown>): PromotionCandidateView {
   const reviewStatus = String(row.review_status);
   return {
@@ -309,6 +313,36 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
   getKnowledgePage(pageId: string): StoredKnowledgePage | undefined {
     const row = this.get<Record<string, unknown>>(`SELECT * FROM knowledge_pages WHERE page_id = :page_id LIMIT 1`, { page_id: pageId });
     return row ? mapKnowledgePage(row) : undefined;
+  }
+
+  upsertEvidenceBundle(bundle: EvidenceBundle): void {
+    this.run(
+      `INSERT INTO evidence_bundles (bundle_id, query, bundle_json, generated_at, updated_at)
+       VALUES (:bundle_id, :query, :bundle_json, :generated_at, :updated_at)
+       ON CONFLICT(bundle_id) DO UPDATE SET query=excluded.query, bundle_json=excluded.bundle_json, generated_at=excluded.generated_at, updated_at=excluded.updated_at`,
+      {
+        bundle_id: bundle.bundle_id,
+        query: bundle.query,
+        bundle_json: JSON.stringify(bundle),
+        generated_at: bundle.generated_at,
+        updated_at: nowIso(),
+      },
+    );
+  }
+
+  getEvidenceBundle(bundleId: string): EvidenceBundle | undefined {
+    const row = this.get<Record<string, unknown>>(
+      `SELECT * FROM evidence_bundles WHERE bundle_id = :bundle_id LIMIT 1`,
+      { bundle_id: bundleId },
+    );
+    return row ? mapEvidenceBundle(row) : undefined;
+  }
+
+  listEvidenceBundles(limit = 10): readonly EvidenceBundle[] {
+    return this.all<Record<string, unknown>>(
+      `SELECT * FROM evidence_bundles ORDER BY updated_at DESC LIMIT :limit`,
+      { limit },
+    ).map(mapEvidenceBundle);
   }
 
   listKnowledgePages(limit = 10, status?: StoredKnowledgePage['page']['status']): readonly StoredKnowledgePage[] {
@@ -521,7 +555,7 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     };
   }
 
-  countTable(tableName: 'entities' | 'relationships' | 'decisions' | 'preferences' | 'promoted_memories' | 'knowledge_pages' | 'promotion_candidates'): number {
+  countTable(tableName: 'entities' | 'relationships' | 'decisions' | 'preferences' | 'promoted_memories' | 'knowledge_pages' | 'promotion_candidates' | 'evidence_bundles'): number {
     const row = this.get<{ count: number }>(`SELECT COUNT(*) as count FROM ${tableName}`);
     return row?.count ?? 0;
   }
