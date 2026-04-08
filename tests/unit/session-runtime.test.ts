@@ -3,10 +3,112 @@ import { tmpdir } from 'node:os';
 
 import { assert, assertDeepEqual, assertEqual } from '../../src/shared/assert';
 import { createSessionRuntime } from '../../src/session-runtime';
+import { createTruthKernelStorage, ensureTruthKernelSeedData } from '../../src/jarvis_fusion/truth-kernel';
 
 export function runSessionRuntimeUnitTest(): void {
   const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-session-`);
-  const runtime = createSessionRuntime({ storePath: `${root}/truth.db`, autoSeed: true });
+  const store = createTruthKernelStorage(`${root}/truth.db`);
+  ensureTruthKernelSeedData(store, {
+    project: 'demo-project',
+    objective: 'prepare the codex shim',
+    activeTask: 'bootstrap cli',
+  });
+
+  const timestamp = new Date().toISOString();
+  store.upsertEntity({
+    entity_id: 'project:demo-project:imported',
+    entity_type: 'project',
+    name: 'demo-project imported reference',
+    summary: 'Imported project context from a read-only source snapshot.',
+    state_json: JSON.stringify({ imported: true }),
+    status: 'active',
+    canonical_page_id: null,
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
+  store.upsertEntity({
+    entity_id: 'system:codex-cli',
+    entity_type: 'system',
+    name: 'Codex CLI',
+    summary: 'Host entry point used to bootstrap operator sessions.',
+    state_json: JSON.stringify({ host: 'codex' }),
+    status: 'active',
+    canonical_page_id: null,
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
+  store.upsertDecision({
+    decision_id: 'decision:demo-project:graph-briefs',
+    title: 'Bridge imported references into session context',
+    statement: 'Session packs should expand from imported entities into connected host systems.',
+    status: 'active',
+    scope_entity_id: 'project:demo-project:imported',
+    effective_at: timestamp,
+    superseded_by: null,
+    provenance_id: null,
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
+  store.upsertPreference({
+    preference_id: 'preference:demo-project:context-mode',
+    subject_kind: 'project',
+    subject_ref: 'project:demo-project:imported',
+    key: 'context_mode',
+    value: 'graph-aware',
+    strength: 'high',
+    status: 'active',
+    provenance_id: null,
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
+  store.upsertPromotedMemory({
+    memory_id: 'memory:demo-project:graph-import',
+    memory_type: 'project',
+    access_tier: 'ops',
+    summary: 'Imported graph edges should shape the initial session brief.',
+    content: 'The runtime should include imported references and connected systems in the graph context.',
+    subject_entity_id: 'system:codex-cli',
+    status: 'active',
+    provenance_id: null,
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
+  store.run(
+    `INSERT INTO relationships (
+      relationship_id,
+      from_entity_id,
+      relation_type,
+      to_entity_id,
+      weight,
+      status,
+      provenance_id,
+      created_at,
+      updated_at
+    ) VALUES (
+      :relationship_id,
+      :from_entity_id,
+      :relation_type,
+      :to_entity_id,
+      :weight,
+      :status,
+      :provenance_id,
+      :created_at,
+      :updated_at
+    )`,
+    {
+      relationship_id: 'relationship:demo-project:imported-uses-codex',
+      from_entity_id: 'project:demo-project:imported',
+      relation_type: 'uses_host',
+      to_entity_id: 'system:codex-cli',
+      weight: 0.9,
+      status: 'active',
+      provenance_id: null,
+      created_at: timestamp,
+      updated_at: timestamp,
+    },
+  );
+
+  const runtime = createSessionRuntime({ store, autoSeed: false });
   const pack = runtime.buildContextPack({
     project: 'demo-project',
     objective: 'prepare the codex shim',
@@ -20,7 +122,42 @@ export function runSessionRuntimeUnitTest(): void {
   assert(pack.truth_highlights.decisions.length > 0, 'expected seeded decisions');
   assert(pack.truth_highlights.preferences.length > 0, 'expected seeded preferences');
   assert(pack.truth_highlights.promoted_memories.length > 0, 'expected seeded promoted memories');
+  assert(
+    pack.truth_highlights.decisions.includes('Bridge imported references into session context'),
+    'expected imported decision in truth highlights',
+  );
+  assert(
+    pack.truth_highlights.preferences.includes('context_mode=graph-aware'),
+    'expected imported preference in truth highlights',
+  );
+  assert(
+    pack.truth_highlights.entities.includes('demo-project imported reference'),
+    'expected imported entity in truth highlights',
+  );
+  assert(
+    pack.truth_highlights.entities.includes('Codex CLI'),
+    'expected graph-linked entity in truth highlights',
+  );
   assertDeepEqual(pack.graph_context.seed_entities, ['entity-a', 'entity-b']);
-  assert(pack.graph_context.related_entities.length > 0, 'expected related entities from truth store');
+  assert(
+    pack.graph_context.related_entities.includes('project:demo-project:imported'),
+    'expected imported related entity from truth store',
+  );
+  assert(
+    pack.graph_context.related_entities.includes('system:codex-cli'),
+    'expected relationship endpoint in related entities',
+  );
+  assert(
+    pack.graph_context.relationships.some((relationship) => relationship.includes('uses_host')),
+    'expected persisted relationship summary',
+  );
+  assert(
+    pack.graph_context.relationships.some((relationship) =>
+      relationship.includes('Bridge imported references into session context'),
+    ),
+    'expected derived decision graph summary',
+  );
   assertEqual(pack.evidence_appendix.enabled, false);
+
+  store.close();
 }

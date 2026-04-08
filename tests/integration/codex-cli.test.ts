@@ -30,6 +30,12 @@ function captureIo(): CapturedIo {
 export function runCodexCliIntegrationTest(): void {
   const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-cli-`);
   const storePath = `${root}/truth.db`;
+  const importCapture = captureIo();
+  const importExitCode = runCli(
+    ['import-seed', '--json', '--project', 'cli-project', '--store-path', storePath],
+    importCapture.io,
+  );
+  assertEqual(importExitCode, 0);
   const captured = captureIo();
   const exitCode = runCli(['codex', '--json', '--project', 'cli-project', '--objective', 'bootstrap', '--task', 'smoke', '--store-path', storePath], captured.io);
   assertEqual(exitCode, 0);
@@ -37,7 +43,13 @@ export function runCodexCliIntegrationTest(): void {
   assert(captured.stdout.length > 0, 'expected JSON output');
   const result = JSON.parse(captured.stdout.join('')) as {
     host: string; status: string; session_id: string; store_path: string;
-    session: { context_pack: { current_focus: { project: string; objective: string; activeTask: string }; truth_highlights: { decisions: string[] } } };
+    session: {
+      context_pack: {
+        current_focus: { project: string; objective: string; activeTask: string };
+        truth_highlights: { decisions: string[]; entities: string[] };
+        graph_context: { related_entities: string[]; relationships: string[] };
+      };
+    };
   };
   assertEqual(result.host, 'codex');
   assertEqual(result.status, 'bootstrapped');
@@ -45,6 +57,20 @@ export function runCodexCliIntegrationTest(): void {
   assertEqual(result.store_path, storePath);
   assertDeepEqual(result.session.context_pack.current_focus, { project: 'cli-project', objective: 'bootstrap', activeTask: 'smoke' });
   assert(result.session.context_pack.truth_highlights.decisions.length > 0, 'expected persisted decision highlights');
+  assert(
+    result.session.context_pack.truth_highlights.entities.includes('cli-project imported reference'),
+    'expected imported entity in bootstrap truth highlights',
+  );
+  assert(
+    result.session.context_pack.graph_context.related_entities.includes('project:cli-project:imported'),
+    'expected imported related entity in bootstrap graph context',
+  );
+  assert(
+    result.session.context_pack.graph_context.relationships.some((relationship) =>
+      relationship.includes('Keep source readers read-only'),
+    ),
+    'expected derived graph relationship summary in bootstrap output',
+  );
 }
 
 export function runRecallCliIntegrationTest(): void {

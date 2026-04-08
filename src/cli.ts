@@ -19,28 +19,33 @@ export function runCli(argv: string[], io: CliIo): number {
     return 0;
   }
 
-  const facade = createFacade(parsed.storePath ? { storePath: parsed.storePath, autoSeed: true } : { autoSeed: true });
+  const facadeOptions = parsed.storePath ? { storePath: parsed.storePath, autoSeed: true } : { autoSeed: true };
 
   if (parsed.command === 'codex') {
-    const shim = createCodexHostShim({ facade });
-    const result = shim.bootstrap({
-      project: parsed.project,
-      objective: parsed.objective,
-      activeTask: parsed.task,
-      sessionId: parsed.sessionId,
-      storePath: parsed.storePath,
-    });
+    const facade = createFacade(facadeOptions);
+    try {
+      const shim = createCodexHostShim({ facade });
+      const result = shim.bootstrap({
+        project: parsed.project,
+        objective: parsed.objective,
+        activeTask: parsed.task,
+        sessionId: parsed.sessionId,
+        storePath: parsed.storePath,
+      });
 
-    if (parsed.json) {
-      writeLine(io, JSON.stringify(result, null, 2));
-    } else {
-      writeLine(io, `host=${result.host}`);
-      writeLine(io, `session=${result.session_id}`);
-      writeLine(io, `store=${result.store_path}`);
-      writeLine(io, `objective=${result.session.context_pack.current_focus.objective}`);
+      if (parsed.json) {
+        writeLine(io, JSON.stringify(result, null, 2));
+      } else {
+        writeLine(io, `host=${result.host}`);
+        writeLine(io, `session=${result.session_id}`);
+        writeLine(io, `store=${result.store_path}`);
+        writeLine(io, `objective=${result.session.context_pack.current_focus.objective}`);
+      }
+
+      return 0;
+    } finally {
+      facade.close();
     }
-
-    return 0;
   }
 
   if (parsed.command === 'recall') {
@@ -51,13 +56,18 @@ export function runCli(argv: string[], io: CliIo): number {
       return 1;
     }
 
-    const result = facade.recall(query);
-    if (parsed.json) {
-      writeLine(io, JSON.stringify(result, null, 2));
-    } else {
-      writeLine(io, result.message);
+    const facade = createFacade(facadeOptions);
+    try {
+      const result = facade.recall(query);
+      if (parsed.json) {
+        writeLine(io, JSON.stringify(result, null, 2));
+      } else {
+        writeLine(io, result.message);
+      }
+      return 0;
+    } finally {
+      facade.close();
     }
-    return 0;
   }
 
   if (parsed.command === 'page') {
@@ -68,30 +78,46 @@ export function runCli(argv: string[], io: CliIo): number {
       return 1;
     }
 
-    const result = facade.page(subject);
-    if (parsed.json) {
-      writeLine(io, JSON.stringify(result, null, 2));
-    } else {
-      writeLine(io, result.page?.summary_markdown ?? result.message);
+    const facade = createFacade(facadeOptions);
+    try {
+      const result = facade.page(subject);
+      if (parsed.json) {
+        writeLine(io, JSON.stringify(result, null, 2));
+      } else {
+        writeLine(io, result.page?.summary_markdown ?? result.message);
+      }
+      return 0;
+    } finally {
+      facade.close();
     }
-    return 0;
   }
-
 
   if (parsed.command === 'import-seed') {
     const project = parsed.project ?? 'jarvis-fusion-system';
     const storePath = parsed.storePath ?? defaultTruthKernelStoreLocation();
     const store = createTruthKernelStorage(storePath, { autoMigrate: true });
-    const result = toImportResult(
-      runBootstrapImport(store, { manifest_id: `demo-import:${project}`, import_mode: 'bootstrap', reader_names: ['demo-source'] }, project),
-      storePath,
-    );
-    if (parsed.json) {
-      writeLine(io, JSON.stringify(result, null, 2));
-    } else {
-      writeLine(io, result.message);
+    try {
+      const result = toImportResult(
+        runBootstrapImport(
+          store,
+          {
+            manifest_id: `demo-import:${project}`,
+            import_mode: 'bootstrap',
+            reader_names: ['demo-source'],
+          },
+          project,
+        ),
+        storePath,
+      );
+      if (parsed.json) {
+        writeLine(io, JSON.stringify(result, null, 2));
+      } else {
+        writeLine(io, result.message);
+      }
+      return 0;
+    } finally {
+      store.close();
     }
-    return 0;
   }
 
   if (parsed.command === 'promote') {
@@ -102,13 +128,18 @@ export function runCli(argv: string[], io: CliIo): number {
       return 1;
     }
 
-    const result = facade.promote(subject);
-    if (parsed.json) {
-      writeLine(io, JSON.stringify(result, null, 2));
-    } else {
-      writeLine(io, result.message);
+    const facade = createFacade(facadeOptions);
+    try {
+      const result = facade.promote(subject);
+      if (parsed.json) {
+        writeLine(io, JSON.stringify(result, null, 2));
+      } else {
+        writeLine(io, result.message);
+      }
+      return 0;
+    } finally {
+      facade.close();
     }
-    return 0;
   }
 
   io.stderr.write(`Unknown command: ${parsed.command}\n`);

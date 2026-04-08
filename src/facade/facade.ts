@@ -18,7 +18,11 @@ export interface FacadeOptions extends SessionRuntimeOptions {
   readonly runtime?: SessionRuntime;
 }
 
-export function createFacade(options: FacadeOptions = {}): FacadeApi {
+export type ManagedFacadeApi = FacadeApi & {
+  close(): void;
+};
+
+export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
   const store = options.store ?? createTruthKernelStorage(options.storePath ?? defaultTruthKernelStoreLocation(), { autoMigrate: true });
   const runtime = options.runtime ?? createSessionRuntime({ ...options, store });
   const description: FacadeDescription = {
@@ -30,6 +34,9 @@ export function createFacade(options: FacadeOptions = {}): FacadeApi {
   };
 
   return {
+    close(): void {
+      store.close();
+    },
     describe(): FacadeDescription {
       return description;
     },
