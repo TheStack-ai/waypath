@@ -8,7 +8,11 @@ import {
   type SessionStartInput,
   type SessionStartResult,
 } from '../contracts';
-import { createSessionRuntime } from '../session-runtime';
+import { createSessionRuntime, type SessionRuntimeOptions } from '../session-runtime';
+
+export interface FacadeOptions extends SessionRuntimeOptions {
+  readonly runtime?: SessionRuntime;
+}
 
 function makeStubResult(operation: 'recall' | 'page' | 'promote', message: string): RecallResult | PageResult | PromoteResult {
   return {
@@ -18,7 +22,8 @@ function makeStubResult(operation: 'recall' | 'page' | 'promote', message: strin
   };
 }
 
-export function createFacade(runtime: SessionRuntime = createSessionRuntime()): FacadeApi {
+export function createFacade(options: FacadeOptions = {}): FacadeApi {
+  const runtime = options.runtime ?? createSessionRuntime(options);
   const description: FacadeDescription = {
     name: 'jarvis-fusion-facade',
     host_shims: ['codex'],

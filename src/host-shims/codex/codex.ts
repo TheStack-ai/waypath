@@ -4,11 +4,18 @@ import {
   type FacadeApi,
 } from '../../contracts';
 import { createFacade } from '../../facade';
+import { defaultTruthKernelStoreLocation } from '../../jarvis_fusion/truth-kernel/index.js';
 
-export function createCodexHostShim(facade: FacadeApi = createFacade()) {
+export interface CodexHostShimOptions {
+  readonly facade?: FacadeApi;
+}
+
+export function createCodexHostShim(options: CodexHostShimOptions = {}) {
   return {
     host: 'codex' as const,
     bootstrap(input: CodexBootstrapInput = {}): CodexBootstrapResult {
+      const storePath = input.storePath ?? defaultTruthKernelStoreLocation();
+      const facade = options.facade ?? createFacade({ storePath, autoSeed: true });
       const session = facade.sessionStart({
         project: input.project,
         objective: input.objective,
@@ -27,6 +34,7 @@ export function createCodexHostShim(facade: FacadeApi = createFacade()) {
           ...session,
           session_id: input.sessionId ?? session.session_id,
         },
+        store_path: storePath,
       };
     },
   };

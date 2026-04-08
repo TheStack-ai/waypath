@@ -1,3 +1,6 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+
 import { assert, assertDeepEqual, assertEqual } from '../../src/shared/assert';
 import { runCli } from '../../src/cli';
 
@@ -32,8 +35,12 @@ function captureIo(): CapturedIo {
 }
 
 export function runCodexCliIntegrationTest(): void {
+  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-cli-`);
   const captured = captureIo();
-  const exitCode = runCli(['codex', '--json', '--project', 'cli-project', '--objective', 'bootstrap', '--task', 'smoke'], captured.io);
+  const exitCode = runCli(
+    ['codex', '--json', '--project', 'cli-project', '--objective', 'bootstrap', '--task', 'smoke', '--store-path', `${root}/truth.db`],
+    captured.io,
+  );
 
   assertEqual(exitCode, 0);
   assertEqual(captured.stderr.join(''), '');
@@ -43,15 +50,18 @@ export function runCodexCliIntegrationTest(): void {
     host: string;
     status: string;
     session_id: string;
-    session: { context_pack: { current_focus: { project: string; objective: string; activeTask: string } } };
+    store_path: string;
+    session: { context_pack: { current_focus: { project: string; objective: string; activeTask: string }; truth_highlights: { decisions: string[] } } };
   };
 
   assertEqual(result.host, 'codex');
   assertEqual(result.status, 'bootstrapped');
   assertEqual(result.session_id, 'cli-project:smoke');
+  assertEqual(result.store_path, `${root}/truth.db`);
   assertDeepEqual(result.session.context_pack.current_focus, {
     project: 'cli-project',
     objective: 'bootstrap',
     activeTask: 'smoke',
   });
+  assert(result.session.context_pack.truth_highlights.decisions.length > 0, 'expected persisted decision highlights');
 }

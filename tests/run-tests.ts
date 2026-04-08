@@ -1,5 +1,6 @@
 import { runFacadeUnitTest } from './unit/facade.test';
 import { runSessionRuntimeUnitTest } from './unit/session-runtime.test';
+import { runTruthKernelUnitTest } from './unit/truth-kernel.test';
 import { runCodexCliIntegrationTest } from './integration/codex-cli.test';
 
 interface TestCase {
@@ -10,6 +11,7 @@ interface TestCase {
 const tests: TestCase[] = [
   { name: 'facade unit', run: runFacadeUnitTest },
   { name: 'session runtime unit', run: runSessionRuntimeUnitTest },
+  { name: 'truth-kernel unit', run: runTruthKernelUnitTest },
   { name: 'codex cli integration', run: runCodexCliIntegrationTest },
 ];
 

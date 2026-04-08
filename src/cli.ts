@@ -23,6 +23,7 @@ export function runCli(argv: string[], io: CliIo): number {
       objective: parsed.objective,
       activeTask: parsed.task,
       sessionId: parsed.sessionId,
+      storePath: parsed.storePath,
     });
 
     if (parsed.json) {
@@ -30,6 +31,7 @@ export function runCli(argv: string[], io: CliIo): number {
     } else {
       writeLine(io, `host=${result.host}`);
       writeLine(io, `session=${result.session_id}`);
+      writeLine(io, `store=${result.store_path}`);
       writeLine(io, `objective=${result.session.context_pack.current_focus.objective}`);
     }
 

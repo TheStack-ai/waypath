@@ -26,7 +26,7 @@ export interface RecentChanges {
 }
 
 export interface EvidenceAppendix {
-  enabled: true;
+  enabled: boolean;
   bundles: string[];
 }
 
@@ -94,6 +94,7 @@ export interface SessionRuntime {
 export interface CodexBootstrapInput extends SessionStartInput {
   sessionId?: string | undefined;
   command?: string | undefined;
+  storePath?: string | undefined;
 }
 
 export interface CodexBootstrapResult {
@@ -104,4 +105,5 @@ export interface CodexBootstrapResult {
   session_id: string;
   facade: ReturnType<FacadeApi['describe']>;
   session: SessionStartResult;
+  store_path: string;
 }
