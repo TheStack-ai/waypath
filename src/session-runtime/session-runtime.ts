@@ -451,17 +451,31 @@ function formatGraphRelationships(
   persistedRelationships: readonly GraphRelationshipRow[],
   entitiesById: ReadonlyMap<string, TruthEntityRecord>,
   entityScores: ReadonlyMap<string, number>,
+  strategy: ReturnType<typeof createRetrievalStrategy>,
+  focusTokens: readonly string[],
 ): string[] {
   const relationshipSummaries = [
     ...persistedRelationships.map<ScoredValue<string>>((relationship) => {
       const from = buildEntityLabel(relationship.from_entity_id, entitiesById);
       const to = buildEntityLabel(relationship.to_entity_id, entitiesById);
+      const summary = `${from} -[${relationship.relation_type}]-> ${to}`;
       const endpointScore =
         (entityScores.get(relationship.from_entity_id) ?? 0) +
         (entityScores.get(relationship.to_entity_id) ?? 0);
       return {
-        value: `${from} -[${relationship.relation_type}]-> ${to}`,
-        score: relationshipTypeWeight(relationship.relation_type) + (relationship.weight ?? 0) + endpointScore * 0.08,
+        value: summary,
+        score: strategy.score(
+          {
+            id: relationship.relationship_id,
+            kind: 'session-relationship',
+            title: summary,
+            baseline: relationshipTypeWeight(relationship.relation_type),
+            graphRelevance: (relationship.weight ?? 0) + endpointScore * 0.08,
+            enableSourceWeight: false,
+            enableProvenance: false,
+          },
+          focusTokens,
+        ).total,
       };
     }),
     ...decisions
@@ -538,6 +552,14 @@ function expandSnapshot(
   };
 }
 
+function buildFocusTokens(project: string, objective: string, activeTask: string): string[] {
+  return [project, objective, activeTask]
+    .join(' ')
+    .split(/\s+/u)
+    .map((token) => token.trim().toLowerCase())
+    .filter((token) => token.length > 0);
+}
+
 export function createSessionRuntime(options: SessionRuntimeOptions = {}): SessionRuntime {
   const store = options.store ?? createTruthKernelStorage(options.storePath ?? defaultTruthKernelStoreLocation());
   const reviewQueueLimit = options.reviewQueueLimit ?? 8;
@@ -549,6 +571,11 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
       const activeTask = input.activeTask?.trim() || DEFAULT_FOCUS.activeTask;
       const projectEntityId = `project:${project}`;
       const seedEntities = normalizeList(input.seedEntities);
+      const focusTokens = buildFocusTokens(project, objective, activeTask);
+      const retrievalStrategy = createRetrievalStrategy({
+        profile: 'session-runtime',
+        weights: options.recallWeights,
+      });
 
       if (options.autoSeed ?? true) {
         ensureTruthKernelSeedData(store, { project, objective, activeTask });
@@ -561,13 +588,21 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
         expanded.entities,
         expanded.persistedRelationships,
         projectEntityId,
+        retrievalStrategy,
+        focusTokens,
       );
       const entityScores = new Map(
         rankedEntities.map((entity, index) => [entity.entity_id, rankedEntities.length - index] as const),
       );
-      const rankedDecisions = rankDecisions(store, expanded.decisions, entityScores);
-      const rankedPreferences = rankPreferences(store, expanded.preferences, entityScores);
-      const rankedPromotedMemories = rankPromotedMemories(store, expanded.promotedMemories, entityScores);
+      const rankedDecisions = rankDecisions(store, expanded.decisions, entityScores, retrievalStrategy, focusTokens);
+      const rankedPreferences = rankPreferences(store, expanded.preferences, entityScores, retrievalStrategy, focusTokens);
+      const rankedPromotedMemories = rankPromotedMemories(
+        store,
+        expanded.promotedMemories,
+        entityScores,
+        retrievalStrategy,
+        focusTokens,
+      );
       const entitiesById = new Map(
         rankedEntities.map((entity) => [entity.entity_id, entity] as const),
       );
@@ -587,6 +622,8 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
         expanded.persistedRelationships,
         entitiesById,
         entityScores,
+        retrievalStrategy,
+        focusTokens,
       );
 
       return {

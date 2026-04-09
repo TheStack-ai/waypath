@@ -21,7 +21,6 @@ import { createTruthKernelStorage, defaultTruthKernelStoreLocation } from '../ja
 
 export interface FacadeOptions extends SessionRuntimeOptions {
   readonly runtime?: SessionRuntime;
-  readonly recallWeights?: RecallWeightOverrides;
   readonly reviewQueueLimit?: number;
 }
 

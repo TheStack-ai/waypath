@@ -4,6 +4,7 @@ import { runSessionRuntimeUnitTest } from './unit/session-runtime.test';
 import { runTruthKernelUnitTest } from './unit/truth-kernel.test';
 import { runSourceReaderBootstrapUnitTest } from './unit/source-reader-bootstrap.test';
 import { runArchiveProviderUnitTest } from './unit/archive-provider.test';
+import { runRetrievalStrategyUnitTest } from './unit/retrieval-strategy.test';
 import { runRuntimeConfigUnitTest } from './unit/runtime-config.test';
 import {
   runCodexCliIntegrationTest,
@@ -32,6 +33,7 @@ const tests: TestCase[] = [
   { name: 'truth-kernel unit', run: runTruthKernelUnitTest },
   { name: 'source-reader bootstrap unit', run: runSourceReaderBootstrapUnitTest },
   { name: 'archive provider unit', run: runArchiveProviderUnitTest },
+  { name: 'retrieval strategy unit', run: runRetrievalStrategyUnitTest },
   { name: 'runtime config unit', run: runRuntimeConfigUnitTest },
   { name: 'codex cli integration', run: runCodexCliIntegrationTest },
   { name: 'recall cli integration', run: runRecallCliIntegrationTest },
