@@ -56,6 +56,10 @@ export interface RetrievalStrategy {
 interface RetrievalProfileDefaults {
   readonly lexicalWeight: number;
   readonly requireLexicalMatch: boolean;
+  readonly missingSourceSystemWeight: number;
+  readonly unknownSourceSystemWeight: number;
+  readonly missingSourceKindWeight: number;
+  readonly unknownSourceKindWeight: number;
   readonly sourceSystemWeights: Readonly<Record<string, number>>;
   readonly sourceKindWeights: Readonly<Record<string, number>>;
 }
@@ -64,6 +68,10 @@ const PROFILE_DEFAULTS: Readonly<Record<RetrievalStrategyProfile, RetrievalProfi
   'archive-recall': {
     lexicalWeight: 1,
     requireLexicalMatch: true,
+    missingSourceSystemWeight: 0.4,
+    unknownSourceSystemWeight: 0.5,
+    missingSourceKindWeight: 0.25,
+    unknownSourceKindWeight: 0.45,
     sourceSystemWeights: {
       'truth-kernel': 1.1,
       'jarvis-brain-db': 0.95,
@@ -81,6 +89,10 @@ const PROFILE_DEFAULTS: Readonly<Record<RetrievalStrategyProfile, RetrievalProfi
   'session-runtime': {
     lexicalWeight: 0,
     requireLexicalMatch: false,
+    missingSourceSystemWeight: 0.5,
+    unknownSourceSystemWeight: 0.6,
+    missingSourceKindWeight: 0.3,
+    unknownSourceKindWeight: 0.5,
     sourceSystemWeights: {
       'truth-kernel': 1.2,
       'jarvis-brain-db': 0.95,
@@ -112,8 +124,8 @@ function resolveSourceSystemWeight(
 ): number {
   const configured = sourceSystem ? overrides?.sourceSystems?.[sourceSystem] : undefined;
   if (configured !== undefined) return configured;
-  if (!sourceSystem) return 0.4;
-  return defaults.sourceSystemWeights[sourceSystem] ?? 0.5;
+  if (!sourceSystem) return defaults.missingSourceSystemWeight;
+  return defaults.sourceSystemWeights[sourceSystem] ?? defaults.unknownSourceSystemWeight;
 }
 
 function resolveSourceKindWeight(
@@ -123,8 +135,8 @@ function resolveSourceKindWeight(
 ): number {
   const configured = sourceKind ? overrides?.sourceKinds?.[sourceKind] : undefined;
   if (configured !== undefined) return configured;
-  if (!sourceKind) return 0.25;
-  return defaults.sourceKindWeights[sourceKind] ?? 0.45;
+  if (!sourceKind) return defaults.missingSourceKindWeight;
+  return defaults.sourceKindWeights[sourceKind] ?? defaults.unknownSourceKindWeight;
 }
 
 function lexicalScore(

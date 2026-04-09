@@ -209,12 +209,8 @@ function passesFilters(item: EvidenceItem, filters: ArchiveSearchFilters | undef
 function scoreItem(
   item: EvidenceItem,
   tokens: readonly string[],
-  options: LocalArchiveRuntimeOptions | undefined,
+  strategy: ReturnType<typeof createRetrievalStrategy>,
 ): number {
-  const strategy = createRetrievalStrategy({
-    profile: 'archive-recall',
-    weights: options?.weights,
-  });
   return strategy.score(
     {
       id: item.evidence_id,
@@ -266,6 +262,10 @@ export function buildLocalArchiveBundle(
 ): EvidenceBundle {
   const normalizedQuery = query.trim();
   const tokens = tokenize(normalizedQuery);
+  const strategy = createRetrievalStrategy({
+    profile: 'archive-recall',
+    weights: options.weights,
+  });
   const evidenceItems = store ? collectStoreEvidence(store) : [];
 
   if (!store) {
@@ -291,7 +291,7 @@ export function buildLocalArchiveBundle(
 
   const ranked = evidenceItems
     .filter((item) => passesFilters(item, undefined))
-    .map((item) => ({ item, score: scoreItem(item, tokens, options) }))
+    .map((item) => ({ item, score: scoreItem(item, tokens, strategy) }))
     .filter((entry) => entry.score > 0);
 
   return {
