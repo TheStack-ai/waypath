@@ -30,7 +30,7 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
   const store = options.store ?? createTruthKernelStorage(options.storePath ?? defaultTruthKernelStoreLocation(), { autoMigrate: true });
   const runtime = options.runtime ?? createSessionRuntime({ ...options, store });
   const description: FacadeDescription = {
-    name: 'jarvis-fusion-facade',
+    name: 'waypath-facade',
     host_shims: ['codex'],
     verbs: ['session-start', 'recall', 'page', 'promote', 'review', 'review-queue', 'inspect-page', 'inspect-candidate'],
     access_layer: 'operator-facing',
@@ -184,7 +184,7 @@ function withEvidenceAppendix(
 }
 
 function makeSessionId(input: SessionStartInput): string {
-  const project = input.project?.trim() || 'jarvis-fusion-system';
+  const project = input.project?.trim() || 'waypath';
   const activeTask = input.activeTask?.trim() || 'codex-host-shim-skeleton';
   return `${project}:${activeTask}`;
 }

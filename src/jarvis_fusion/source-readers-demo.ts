@@ -1,6 +1,6 @@
 import type { SourceReader, SourceSnapshot } from './source-readers-contracts.js';
 
-export function createDemoSourceReader(project = 'jarvis-fusion-system'): SourceReader {
+export function createDemoSourceReader(project = 'waypath'): SourceReader {
   return {
     name: 'demo-source',
     load(): SourceSnapshot {

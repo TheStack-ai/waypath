@@ -251,7 +251,7 @@ export function probeLocalSourceAdapters(): readonly LocalSourceProbe[] {
   ];
 }
 
-export function createJarvisMemoryDbSourceReader(project = 'jarvis-fusion-system'): SourceReader {
+export function createJarvisMemoryDbSourceReader(project = 'waypath'): SourceReader {
   const dbPath = getJarvisDbPath();
   return {
     name: 'jarvis-memory-db',
@@ -453,7 +453,7 @@ export function createJarvisMemoryDbSourceReader(project = 'jarvis-fusion-system
   };
 }
 
-export function createJarvisBrainDbSourceReader(project = 'jarvis-fusion-system'): SourceReader {
+export function createJarvisBrainDbSourceReader(project = 'waypath'): SourceReader {
   const dbPath = getJarvisBrainDbPath();
   return {
     name: 'jarvis-brain-db',

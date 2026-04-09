@@ -10,7 +10,7 @@
 ## Recommended Top-Level Layout
 
 ```text
-jarvis-fusion-system/
+waypath/
   docs/
   openspec/
   src/

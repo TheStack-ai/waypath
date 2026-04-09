@@ -276,7 +276,7 @@ V1에서는 monorepo + `src/` module layout이 가장 단순합니다.
 자세한 분해안은 `docs/09-repo-module-plan.md`를 기준으로 봅니다.
 
 ```text
-jarvis-fusion-system/
+waypath/
   docs/
   openspec/
   src/

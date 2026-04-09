@@ -179,7 +179,7 @@ function createJarvisBrainFixtureDb(path: string): void {
 }
 
 export function runImportLocalCliIntegrationTest(): void {
-  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-import-local-`);
+  const root = mkdtempSync(`${tmpdir()}/waypath-import-local-`);
   const jarvisDbPath = join(root, 'jarvis.db');
   const jarvisBrainDbPath = join(root, 'brain.db');
   const truthDbPath = join(root, 'truth.db');

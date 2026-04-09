@@ -28,7 +28,7 @@ function captureIo(): CapturedIo {
 }
 
 export function runCodexCliIntegrationTest(): void {
-  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-cli-`);
+  const root = mkdtempSync(`${tmpdir()}/waypath-cli-`);
   const storePath = `${root}/truth.db`;
   const importCapture = captureIo();
   const importExitCode = runCli(
@@ -80,7 +80,7 @@ export function runCodexCliIntegrationTest(): void {
 }
 
 export function runRecallCliIntegrationTest(): void {
-  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-recall-`);
+  const root = mkdtempSync(`${tmpdir()}/waypath-recall-`);
   const storePath = `${root}/truth.db`;
   const importCapture = captureIo();
   const importExitCode = runCli(
@@ -107,14 +107,14 @@ export function runRecallCliIntegrationTest(): void {
 }
 
 export function runPageCliIntegrationTest(): void {
-  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-page-`);
+  const root = mkdtempSync(`${tmpdir()}/waypath-page-`);
   const storePath = `${root}/truth.db`;
   const captured = captureIo();
-  const exitCode = runCli(['page', '--json', '--subject', 'jarvis-fusion-system', '--store-path', storePath], captured.io);
+  const exitCode = runCli(['page', '--json', '--subject', 'waypath', '--store-path', storePath], captured.io);
   assertEqual(exitCode, 0);
   const result = JSON.parse(captured.stdout.join('')) as { status: string; page?: { page: { page_id: string }; summary_markdown: string } };
   assertEqual(result.status, 'ready');
-  assert(result.page?.summary_markdown.includes('# jarvis-fusion-system'), 'expected page markdown');
+  assert(result.page?.summary_markdown.includes('# waypath'), 'expected page markdown');
   assert(result.page?.summary_markdown.includes('## Graph links'), 'expected graph-aware page section');
   const store = createTruthKernelStorage(storePath);
   const persisted = store.getKnowledgePage(result.page!.page.page_id);
@@ -125,7 +125,7 @@ export function runPageCliIntegrationTest(): void {
 }
 
 export function runPromoteCliIntegrationTest(): void {
-  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-promote-`);
+  const root = mkdtempSync(`${tmpdir()}/waypath-promote-`);
   const storePath = `${root}/truth.db`;
   const captured = captureIo();
   const exitCode = runCli(['promote', '--json', '--subject', 'remember this decision', '--store-path', storePath], captured.io);
@@ -140,7 +140,7 @@ export function runPromoteCliIntegrationTest(): void {
 }
 
 export function runReviewCliIntegrationTest(): void {
-  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-review-`);
+  const root = mkdtempSync(`${tmpdir()}/waypath-review-`);
   const storePath = `${root}/truth.db`;
   const promoteCapture = captureIo();
   const promoteExitCode = runCli(
@@ -179,7 +179,7 @@ export function runReviewCliIntegrationTest(): void {
 }
 
 export function runReviewQueueCliIntegrationTest(): void {
-  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-review-queue-`);
+  const root = mkdtempSync(`${tmpdir()}/waypath-review-queue-`);
   const storePath = `${root}/truth.db`;
   const promoteCapture = captureIo();
   const promoteExitCode = runCli(
@@ -200,7 +200,7 @@ export function runReviewQueueCliIntegrationTest(): void {
 }
 
 export function runInspectCliIntegrationTest(): void {
-  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-inspect-`);
+  const root = mkdtempSync(`${tmpdir()}/waypath-inspect-`);
   const storePath = `${root}/truth.db`;
   const pageCapture = captureIo();
   assertEqual(runCli(['page', '--json', '--subject', 'inspect-project', '--store-path', storePath], pageCapture.io), 0);

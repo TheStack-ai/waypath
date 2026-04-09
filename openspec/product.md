@@ -1,7 +1,7 @@
 # Product
 
 ## Name
-Jarvis Fusion System
+Waypath
 
 ## Purpose
 기존 Claude Code 기반 메인 시스템들을 **reference source**로 활용하여,

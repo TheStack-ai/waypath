@@ -1,8 +1,8 @@
-# Jarvis Fusion v1-core Release Candidate
+# Waypath v1-core Release Candidate
 
 ## 상태
 
-`jarvis-fusion`은 현재 **terminal-installable local-first v1-core RC** 상태다.
+`waypath`은 현재 **terminal-installable local-first v1-core RC** 상태다.
 
 핵심 구현:
 
@@ -21,7 +21,7 @@
 ```bash
 npm run build
 npm pack
-npm install -g ./jarvis-fusion-0.1.0-rc.0.tgz
+npm install -g ./waypath-0.1.0-rc.0.tgz
 ```
 
 필수 런타임:
@@ -31,18 +31,18 @@ npm install -g ./jarvis-fusion-0.1.0-rc.0.tgz
 ## 검증된 사용 흐름
 
 ```bash
-jarvis-fusion --help
-jarvis-fusion source-status --json
-jarvis-fusion import-seed --json --project demo-project --store-path /tmp/jf-demo.db
-jarvis-fusion import-local --json --project local-project --store-path /tmp/jf-local.db
-jarvis-fusion codex --json --project demo-project --objective bootstrap --task smoke --store-path /tmp/jf-demo.db
-jarvis-fusion recall --json --query "shared backend" --store-path /tmp/jf-demo.db
-jarvis-fusion page --json --subject demo-project --store-path /tmp/jf-demo.db
-jarvis-fusion promote --json --subject "remember this decision" --store-path /tmp/jf-demo.db
-jarvis-fusion review --json --candidate-id <id> --status accepted --notes "approved" --store-path /tmp/jf-demo.db
-jarvis-fusion review-queue --json --store-path /tmp/jf-demo.db
-jarvis-fusion inspect-page --json --page-id page:session:demo-project --store-path /tmp/jf-demo.db
-jarvis-fusion inspect-candidate --json --candidate-id <id> --store-path /tmp/jf-demo.db
+waypath --help
+waypath source-status --json
+waypath import-seed --json --project demo-project --store-path /tmp/jf-demo.db
+waypath import-local --json --project local-project --store-path /tmp/jf-local.db
+waypath codex --json --project demo-project --objective bootstrap --task smoke --store-path /tmp/jf-demo.db
+waypath recall --json --query "shared backend" --store-path /tmp/jf-demo.db
+waypath page --json --subject demo-project --store-path /tmp/jf-demo.db
+waypath promote --json --subject "remember this decision" --store-path /tmp/jf-demo.db
+waypath review --json --candidate-id <id> --status accepted --notes "approved" --store-path /tmp/jf-demo.db
+waypath review-queue --json --store-path /tmp/jf-demo.db
+waypath inspect-page --json --page-id page:session:demo-project --store-path /tmp/jf-demo.db
+waypath inspect-candidate --json --candidate-id <id> --store-path /tmp/jf-demo.db
 ```
 
 ## 포함 범위
@@ -69,9 +69,9 @@ jarvis-fusion inspect-candidate --json --candidate-id <id> --store-path /tmp/jf-
 - `npm pack --dry-run`
 - fresh prefix install from packed tarball
 - install smoke:
-  - `jarvis-fusion --help`
-  - `jarvis-fusion source-status --json`
-  - `jarvis-fusion import-seed --json ...`
+  - `waypath --help`
+  - `waypath source-status --json`
+  - `waypath import-seed --json ...`
 
 ## 운영 원칙
 

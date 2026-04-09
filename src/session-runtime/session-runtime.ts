@@ -19,7 +19,7 @@ import type {
 } from '../jarvis_fusion/contracts.js';
 
 const DEFAULT_FOCUS = {
-  project: 'jarvis-fusion-system',
+  project: 'waypath',
   objective: 'bootstrap local-first runtime',
   activeTask: 'codex-host-shim-skeleton',
 } as const;

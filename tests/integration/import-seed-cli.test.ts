@@ -18,7 +18,7 @@ function captureIo() {
 }
 
 export function runImportSeedCliIntegrationTest(): void {
-  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-import-cli-`);
+  const root = mkdtempSync(`${tmpdir()}/waypath-import-cli-`);
   const captured = captureIo();
   const exitCode = runCli(['import-seed', '--json', '--project', 'demo-project', '--store-path', `${root}/truth.db`], captured.io);
   assertEqual(exitCode, 0);

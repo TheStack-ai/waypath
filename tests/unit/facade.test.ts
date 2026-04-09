@@ -5,11 +5,11 @@ import { assert, assertDeepEqual, assertEqual } from '../../src/shared/assert';
 import { createFacade } from '../../src/facade';
 
 export async function runFacadeUnitTest(): Promise<void> {
-  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-facade-`);
+  const root = mkdtempSync(`${tmpdir()}/waypath-facade-`);
   const facade = createFacade({ storePath: `${root}/truth.db`, autoSeed: true });
   const description = facade.describe();
 
-  assertEqual(description.name, 'jarvis-fusion-facade');
+  assertEqual(description.name, 'waypath-facade');
   assertDeepEqual(description.host_shims, ['codex']);
   assertDeepEqual(description.verbs, ['session-start', 'recall', 'page', 'promote', 'review', 'review-queue', 'inspect-page', 'inspect-candidate']);
 

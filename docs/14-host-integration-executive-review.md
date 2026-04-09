@@ -1,6 +1,6 @@
 # 14. Host Integration Executive Review
 
-이 문서는 Jarvis Fusion System을 **Claude Code / Codex 사용자가 “새 앱을 설치했다”가 아니라 “기존 에이전트가 더 똑똑해졌다”**고 느끼도록 패키징/호스트 통합 방식을 결정하기 위한 executive review 결과를 정리합니다.
+이 문서는 Waypath을 **Claude Code / Codex 사용자가 “새 앱을 설치했다”가 아니라 “기존 에이전트가 더 똑똑해졌다”**고 느끼도록 패키징/호스트 통합 방식을 결정하기 위한 executive review 결과를 정리합니다.
 
 이 결정은 다음 문서와 컨텍스트를 기반으로 합니다.
 
@@ -21,7 +21,7 @@
 ## 1. Final decision
 
 ### 최종 결론
-Jarvis Fusion은 **하나의 shared local backend**를 중심으로 두고, Codex / Claude Code에는 **thin host shim**만 제공하는 구조가 가장 적합합니다.
+Waypath은 **하나의 shared local backend**를 중심으로 두고, Codex / Claude Code에는 **thin host shim**만 제공하는 구조가 가장 적합합니다.
 
 즉, 기본 전략은 다음과 같습니다.
 
@@ -32,7 +32,7 @@ Jarvis Fusion은 **하나의 shared local backend**를 중심으로 두고, Code
 5. slash commands는 있어도 되지만 **secondary convenience surface**로만 취급한다.
 
 ### 한 줄 요약
-> **Jarvis Fusion은 별도 앱이 아니라, 기존 Claude Code / Codex를 더 똑똑하게 만드는 shared brain backend + thin host shim 구조로 가야 한다.**
+> **Waypath은 별도 앱이 아니라, 기존 Claude Code / Codex를 더 똑똑하게 만드는 shared brain backend + thin host shim 구조로 가야 한다.**
 
 ---
 
@@ -75,7 +75,7 @@ Jarvis Fusion은 **하나의 shared local backend**를 중심으로 두고, Code
 개념적으로는 아래처럼 이해하면 됩니다.
 
 ```text
-jarvis-fusion-core
+waypath-core
   - truth-kernel
   - archive-kernel
   - ontology-support
@@ -103,7 +103,7 @@ jarvis-fusion-core
 다음은 기본 전략으로 채택하지 않습니다.
 
 - host별 독립 backend / 독립 저장소
-- Jarvis Fusion standalone app를 daily primary surface로 두는 구조
+- Waypath standalone app를 daily primary surface로 두는 구조
 - host-specific command catalog가 backend contract를 대체하는 구조
 - host마다 다른 truth/promotion semantics를 갖는 구조
 
@@ -117,7 +117,7 @@ jarvis-fusion-core
 1. shared backend를 **한 번 설치**한다.
 2. Codex 또는 Claude Code용 **host shim을 활성화**한다.
 3. 사용자는 원래 쓰던 host를 거의 그대로 사용한다.
-4. 세션 시작 시 Jarvis Fusion이 **조용히 context를 보강**한다.
+4. 세션 시작 시 Waypath이 **조용히 context를 보강**한다.
 
 ### UX 원칙
 사용자가 느껴야 하는 경험은 다음과 같습니다.
@@ -136,8 +136,8 @@ jf claude
 이후 안정화되면 opt-in alias takeover를 고려할 수 있습니다.
 
 ```bash
-jarvis-fusion host enable codex --alias
-jarvis-fusion host enable claude-code --alias
+waypath host enable codex --alias
+waypath host enable claude-code --alias
 ```
 
 하지만 기본값으로 native binary를 shadowing하는 것은 trust / rollback / debugging 측면에서 너무 공격적입니다.
@@ -261,7 +261,7 @@ slash commands가 존재한다면 다음 조건을 만족해야 합니다.
 - everyday question/answer flow
 
 ### desired feel
-Jarvis Fusion은 다음처럼 느껴져야 합니다.
+Waypath은 다음처럼 느껴져야 합니다.
 
 - “Codex with better memory”
 - “Claude Code with better recall and structure”
@@ -365,7 +365,7 @@ v1은 아래와 같이 잡는 것이 맞습니다.
 ## 12. Final recommendation snapshot
 
 ### Build this
-- **one shared local Jarvis Fusion backend**
+- **one shared local Waypath backend**
 - **thin host-specific shims** for Codex / Claude Code
 - **automatic session-start context augmentation**
 - **explicit review-based write path**
@@ -378,7 +378,7 @@ v1은 아래와 같이 잡는 것이 맞습니다.
 - automatic truth mutation
 
 ### Product sentence
-> **Jarvis Fusion은 Codex / Claude Code를 대체하는 앱이 아니라, 현재 truth를 지키면서 과거 evidence와 graph context를 더 잘 끌어와 세션 시작부터 더 똑똑하게 만들어 주는 shared brain backend다.**
+> **Waypath은 Codex / Claude Code를 대체하는 앱이 아니라, 현재 truth를 지키면서 과거 evidence와 graph context를 더 잘 끌어와 세션 시작부터 더 똑똑하게 만들어 주는 shared brain backend다.**
 
 ---
 

@@ -58,21 +58,21 @@ function readValue(values: string[], index: number, flag: string): string {
 
 export function formatUsage(): string {
   return [
-    'Jarvis Fusion System',
+    'Waypath',
     '',
     'Usage:',
-    '  jarvis-fusion codex [--json] [--project <name>] [--objective <text>] [--task <text>] [--session-id <id>] [--store-path <path>]',
-    '  jarvis-fusion recall --query <text> [--json]',
-    '  jarvis-fusion page --subject <text> [--json]',
-    '  jarvis-fusion promote --subject <text> [--json]',
-    '  jarvis-fusion review --candidate-id <id> --status <pending_review|accepted|rejected|needs_more_evidence|superseded> [--notes <text>] [--json]',
-    '  jarvis-fusion review-queue [--json] [--store-path <path>]',
-    '  jarvis-fusion inspect-page --page-id <id> [--json] [--store-path <path>]',
-    '  jarvis-fusion inspect-candidate --candidate-id <id> [--json] [--store-path <path>]',
-    '  jarvis-fusion import-seed [--project <name>] [--store-path <path>] [--json]',
-    '  jarvis-fusion import-local [--project <name>] [--store-path <path>] [--json]',
-    '  jarvis-fusion source-status [--json]',
-    '  jarvis-fusion --help',
+    '  waypath codex [--json] [--project <name>] [--objective <text>] [--task <text>] [--session-id <id>] [--store-path <path>]',
+    '  waypath recall --query <text> [--json]',
+    '  waypath page --subject <text> [--json]',
+    '  waypath promote --subject <text> [--json]',
+    '  waypath review --candidate-id <id> --status <pending_review|accepted|rejected|needs_more_evidence|superseded> [--notes <text>] [--json]',
+    '  waypath review-queue [--json] [--store-path <path>]',
+    '  waypath inspect-page --page-id <id> [--json] [--store-path <path>]',
+    '  waypath inspect-candidate --candidate-id <id> [--json] [--store-path <path>]',
+    '  waypath import-seed [--project <name>] [--store-path <path>] [--json]',
+    '  waypath import-local [--project <name>] [--store-path <path>] [--json]',
+    '  waypath source-status [--json]',
+    '  waypath --help',
   ].join('\n');
 }
 

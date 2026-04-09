@@ -1,6 +1,6 @@
-# Jarvis Fusion System
+# Waypath
 
-이 repository는 처음에는 planning workspace로 시작했지만, 현재는 **터미널에서 설치해서 바로 쓸 수 있는 `jarvis-fusion` v1-core release candidate**까지 구현된 상태입니다.
+이 repository는 처음에는 planning workspace로 시작했지만, 현재는 **터미널에서 설치해서 바로 쓸 수 있는 `waypath` v1-core release candidate**까지 구현된 상태입니다.
 
 현재 기준 핵심 상태:
 
@@ -9,7 +9,7 @@
 - **truth-backed recall**
 - **durable page / promotion / review flows**
 - **real local Jarvis / jarvis-brain read-only adapters**
-- **terminal installable npm package (`jarvis-fusion`)**
+- **terminal installable npm package (`waypath`)**
 
 ---
 
@@ -26,16 +26,16 @@
 ```bash
 npm run build
 npm pack
-npm install -g ./jarvis-fusion-0.1.0-rc.0.tgz
+npm install -g ./waypath-0.1.0-rc.0.tgz
 ```
 
 설치 확인:
 
 ```bash
-jarvis-fusion --help
-jarvis-fusion source-status --json
-jarvis-fusion import-seed --json --project demo-project --store-path /tmp/jf-demo.db
-jarvis-fusion codex --json --project demo-project --objective "bootstrap" --task "smoke" --store-path /tmp/jf-demo.db
+waypath --help
+waypath source-status --json
+waypath import-seed --json --project demo-project --store-path /tmp/jf-demo.db
+waypath codex --json --project demo-project --objective "bootstrap" --task "smoke" --store-path /tmp/jf-demo.db
 ```
 
 ---
@@ -43,17 +43,17 @@ jarvis-fusion codex --json --project demo-project --objective "bootstrap" --task
 ## Current v1-core command surface
 
 ```bash
-jarvis-fusion codex --json [--project ...] [--objective ...] [--task ...] [--store-path ...]
-jarvis-fusion recall --query <text> [--json] [--store-path ...]
-jarvis-fusion page --subject <text> [--json] [--store-path ...]
-jarvis-fusion promote --subject <text> [--json] [--store-path ...]
-jarvis-fusion review --candidate-id <id> --status <...> [--notes <text>] [--json] [--store-path ...]
-jarvis-fusion review-queue [--json] [--store-path ...]
-jarvis-fusion inspect-page --page-id <id> [--json] [--store-path ...]
-jarvis-fusion inspect-candidate --candidate-id <id> [--json] [--store-path ...]
-jarvis-fusion import-seed [--project <name>] [--store-path <path>] [--json]
-jarvis-fusion import-local [--project <name>] [--store-path <path>] [--json]
-jarvis-fusion source-status [--json]
+waypath codex --json [--project ...] [--objective ...] [--task ...] [--store-path ...]
+waypath recall --query <text> [--json] [--store-path ...]
+waypath page --subject <text> [--json] [--store-path ...]
+waypath promote --subject <text> [--json] [--store-path ...]
+waypath review --candidate-id <id> --status <...> [--notes <text>] [--json] [--store-path ...]
+waypath review-queue [--json] [--store-path ...]
+waypath inspect-page --page-id <id> [--json] [--store-path ...]
+waypath inspect-candidate --candidate-id <id> [--json] [--store-path ...]
+waypath import-seed [--project <name>] [--store-path <path>] [--json]
+waypath import-local [--project <name>] [--store-path <path>] [--json]
+waypath source-status [--json]
 ```
 
 ---

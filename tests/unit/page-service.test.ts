@@ -9,7 +9,7 @@ import {
 } from '../../src/jarvis_fusion/truth-kernel';
 
 export function runPageServiceUnitTest(): void {
-  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-page-service-`);
+  const root = mkdtempSync(`${tmpdir()}/waypath-page-service-`);
   const store = createTruthKernelStorage(`${root}/truth.db`);
   ensureTruthKernelSeedData(store, {
     project: 'graph-project',

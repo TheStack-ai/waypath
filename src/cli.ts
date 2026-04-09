@@ -96,7 +96,7 @@ export function runCli(argv: string[], io: CliIo): number {
   }
 
   if (parsed.command === 'import-seed') {
-    const project = parsed.project ?? 'jarvis-fusion-system';
+    const project = parsed.project ?? 'waypath';
     const storePath = parsed.storePath ?? defaultTruthKernelStoreLocation();
     const store = createTruthKernelStorage(storePath, { autoMigrate: true });
     try {
@@ -124,7 +124,7 @@ export function runCli(argv: string[], io: CliIo): number {
   }
 
   if (parsed.command === 'import-local') {
-    const project = parsed.project ?? 'jarvis-fusion-system';
+    const project = parsed.project ?? 'waypath';
     const storePath = parsed.storePath ?? defaultTruthKernelStoreLocation();
     const store = createTruthKernelStorage(storePath, { autoMigrate: true });
     try {

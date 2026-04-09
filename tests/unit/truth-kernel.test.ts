@@ -10,7 +10,7 @@ import {
 } from '../../src/jarvis_fusion/truth-kernel';
 
 export function runTruthKernelUnitTest(): void {
-  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-truth-`);
+  const root = mkdtempSync(`${tmpdir()}/waypath-truth-`);
   const store = createTruthKernelStorage(`${root}/truth.db`);
   ensureTruthKernelSeedData(store, {
     project: 'unit-project',

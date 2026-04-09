@@ -562,7 +562,7 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
 }
 
 export function defaultTruthKernelStoreLocation(currentDirectory: string = process.cwd()): string {
-  return join(currentDirectory, '.jarvis-fusion', 'truth.db');
+  return join(currentDirectory, '.waypath', 'truth.db');
 }
 
 export function createTruthKernelStorage(location: string, options: SqliteTruthKernelStoreOptions = {}): SqliteTruthKernelStorage {
@@ -570,7 +570,7 @@ export function createTruthKernelStorage(location: string, options: SqliteTruthK
 }
 
 export function ensureTruthKernelSeedData(store: SqliteTruthKernelStorage, options: TruthKernelSeedOptions = {}): void {
-  const project = options.project?.trim() || 'jarvis-fusion-system';
+  const project = options.project?.trim() || 'waypath';
   const objective = options.objective?.trim() || 'deliver codex-first external brain';
   const activeTask = options.activeTask?.trim() || 'session-start';
   const projectEntityId = `project:${project}`;
@@ -579,10 +579,10 @@ export function ensureTruthKernelSeedData(store: SqliteTruthKernelStorage, optio
   if (store.getEntity(projectEntityId)) return;
 
   store.transaction(() => {
-    store.upsertEntity({ entity_id: projectEntityId, entity_type: 'project', name: project, summary: 'Primary local-first project workspace for Jarvis Fusion v1.', state_json: toJson({ objective, activeTask }), status: 'active', canonical_page_id: null, created_at: timestamp, updated_at: timestamp });
+    store.upsertEntity({ entity_id: projectEntityId, entity_type: 'project', name: project, summary: 'Primary local-first project workspace for Waypath v1.', state_json: toJson({ objective, activeTask }), status: 'active', canonical_page_id: null, created_at: timestamp, updated_at: timestamp });
     store.upsertEntity({ entity_id: `task:${project}:${activeTask}`, entity_type: 'task', name: activeTask, summary: `Current active task for ${project}.`, state_json: toJson({ projectEntityId }), status: 'active', canonical_page_id: null, created_at: timestamp, updated_at: timestamp });
     store.upsertEntity({ entity_id: `system:${project}:codex-shim`, entity_type: 'system', name: 'Codex host shim', summary: 'Thin operator-facing host shim for Codex.', state_json: toJson({ host: 'codex' }), status: 'active', canonical_page_id: null, created_at: timestamp, updated_at: timestamp });
-    store.upsertDecision({ decision_id: `decision:${project}:shared-backend-host-shims`, title: 'Use a shared backend with thin host shims', statement: 'Jarvis Fusion v1 keeps truth, archive orchestration, and session assembly in one local backend while Codex/Claude integrations remain thin shims.', status: 'active', scope_entity_id: projectEntityId, effective_at: timestamp, superseded_by: null, provenance_id: null, created_at: timestamp, updated_at: timestamp });
+    store.upsertDecision({ decision_id: `decision:${project}:shared-backend-host-shims`, title: 'Use a shared backend with thin host shims', statement: 'Waypath v1 keeps truth, archive orchestration, and session assembly in one local backend while Codex/Claude integrations remain thin shims.', status: 'active', scope_entity_id: projectEntityId, effective_at: timestamp, superseded_by: null, provenance_id: null, created_at: timestamp, updated_at: timestamp });
     store.upsertPreference({ preference_id: `preference:${project}:rollout-order`, subject_kind: 'project', subject_ref: projectEntityId, key: 'host_rollout', value: 'codex-first', strength: 'high', status: 'active', provenance_id: null, created_at: timestamp, updated_at: timestamp });
     store.upsertPromotedMemory({ memory_id: `memory:${project}:session-start-pack`, memory_type: 'project', access_tier: 'ops', summary: 'Session-start context packs should come from persisted SQLite truth data.', content: `Current objective: ${objective}. Active task: ${activeTask}.`, subject_entity_id: projectEntityId, status: 'active', provenance_id: null, created_at: timestamp, updated_at: timestamp });
     store.upsertRelationship({ relationship_id: `relationship:${project}:project-active-task`, from_entity_id: projectEntityId, relation_type: 'has_active_task', to_entity_id: `task:${project}:${activeTask}`, weight: 1, status: 'active', provenance_id: null, created_at: timestamp, updated_at: timestamp });

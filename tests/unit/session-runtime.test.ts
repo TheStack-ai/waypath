@@ -6,7 +6,7 @@ import { createSessionRuntime } from '../../src/session-runtime';
 import { createTruthKernelStorage, ensureTruthKernelSeedData } from '../../src/jarvis_fusion/truth-kernel';
 
 export function runSessionRuntimeUnitTest(): void {
-  const root = mkdtempSync(`${tmpdir()}/jarvis-fusion-session-`);
+  const root = mkdtempSync(`${tmpdir()}/waypath-session-`);
   const store = createTruthKernelStorage(`${root}/truth.db`);
   ensureTruthKernelSeedData(store, {
     project: 'demo-project',
