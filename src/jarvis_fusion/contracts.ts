@@ -234,9 +234,12 @@ export interface GraphContext {
 export interface RecentChanges {
   readonly recent_promotions: readonly string[];
   readonly superseded: readonly string[];
-  readonly open_contradictions: readonly ContradictionItem[];
-  readonly review_queue: readonly ReviewQueueItem[];
-  readonly stale_items: readonly StaleItem[];
+  readonly open_contradictions: readonly string[];
+  readonly review_queue: readonly string[];
+  readonly stale_items: readonly string[];
+  readonly contradiction_items: readonly ContradictionItem[];
+  readonly review_queue_items: readonly ReviewQueueItem[];
+  readonly stale_item_details: readonly StaleItem[];
 }
 
 export interface EvidenceAppendix {

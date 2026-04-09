@@ -47,9 +47,12 @@ export interface ContradictionItem {
 export interface RecentChanges {
   recent_promotions: string[];
   superseded: string[];
-  open_contradictions: ContradictionItem[];
-  review_queue: ReviewQueueItem[];
-  stale_items: StaleItem[];
+  open_contradictions: string[];
+  review_queue: string[];
+  stale_items: string[];
+  contradiction_items: ContradictionItem[];
+  review_queue_items: ReviewQueueItem[];
+  stale_item_details: StaleItem[];
 }
 
 export interface EvidenceItem {
@@ -136,6 +139,10 @@ export interface ImportRun {
 export interface ImportResult {
   operation: 'import';
   status: 'imported';
+  mode: ImportMode;
+  manifest_id: string;
+  readers: string[];
+  imported_at: string;
   run: ImportRun;
   store_path: string;
   counts: ImportCounts;
@@ -157,6 +164,7 @@ export interface LocalSourceStatusItem {
   enabled: boolean;
   path: string | null;
   adapter_status: 'ready' | 'probe_only' | 'missing';
+  source_anchor?: SourceAnchor | null;
 }
 
 export interface LocalSourceStatusResult {
@@ -242,9 +250,12 @@ export interface ReviewResult {
 export interface ReviewQueueResult {
   operation: 'review-queue';
   status: 'ready';
-  pending_review: ReviewQueueItem[];
+  pending_review: PromotionCandidateView[];
+  stale_pages: PageReference[];
+  open_contradictions: string[];
+  review_queue_items: ReviewQueueItem[];
   stale_items: StaleItem[];
-  open_contradictions: ContradictionItem[];
+  contradiction_items: ContradictionItem[];
 }
 
 export interface InspectPageResult {
