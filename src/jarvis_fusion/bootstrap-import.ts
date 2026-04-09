@@ -210,6 +210,17 @@ export function runBootstrapImport(store: SqliteTruthKernelStorage, manifest: Bo
 }
 
 export function toImportResult(result: BootstrapImportResult, storePath: string): ImportResult {
+  const run = {
+    manifest_id: result.manifest_id,
+    mode: result.import_mode,
+    imported_at: result.imported_at,
+    reader_names: result.readers,
+    source_anchors: result.readers.map((reader) => ({
+      source_system: reader,
+      source_kind: 'import_reader',
+      source_ref: `${result.manifest_id}#${reader}`,
+    })),
+  };
   return {
     operation: 'import',
     status: 'imported',
@@ -217,6 +228,7 @@ export function toImportResult(result: BootstrapImportResult, storePath: string)
     manifest_id: result.manifest_id,
     readers: result.readers,
     imported_at: result.imported_at,
+    run,
     store_path: storePath,
     counts: {
       provenance:
