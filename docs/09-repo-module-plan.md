@@ -121,12 +121,14 @@ waypath/
 ### `src/shared/config/` (next iteration)
 - `config.toml` parsing
 - env override resolution
-- runtime knobs for source adapters / recall weighting / import policy
+- runtime knobs for source adapters / retrieval weighting / import policy
 
-### `src/archive-kernel/retrieval/` (next iteration)
-- retrieval strategy layer
-- lexical / provenance / source-weight / graph-relevance scoring
-- future vector hook boundary
+### `src/archive-kernel/retrieval/` (bounded maturity slice)
+- retrieval strategy layer의 단일 home
+- lexical / provenance / source-weight / graph-relevance scoring 분리
+- future vector hook boundary (default no-op)
+- `session-runtime`/`archive-provider`가 직접 소유하던 ranking policy를 이 레이어로 이동
+- ranking 이유를 테스트와 문서에서 재설명할 수 있는 surface 유지
 
 ### `src/contracts/domain/` 또는 equivalent typed layer (next iteration)
 - session object
