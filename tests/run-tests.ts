@@ -3,6 +3,8 @@ import { runPageServiceUnitTest } from './unit/page-service.test';
 import { runSessionRuntimeUnitTest } from './unit/session-runtime.test';
 import { runTruthKernelUnitTest } from './unit/truth-kernel.test';
 import { runSourceReaderBootstrapUnitTest } from './unit/source-reader-bootstrap.test';
+import { runArchiveProviderUnitTest } from './unit/archive-provider.test';
+import { runRuntimeConfigUnitTest } from './unit/runtime-config.test';
 import {
   runCodexCliIntegrationTest,
   runPageCliIntegrationTest,
@@ -29,6 +31,8 @@ const tests: TestCase[] = [
   { name: 'session runtime unit', run: runSessionRuntimeUnitTest },
   { name: 'truth-kernel unit', run: runTruthKernelUnitTest },
   { name: 'source-reader bootstrap unit', run: runSourceReaderBootstrapUnitTest },
+  { name: 'archive provider unit', run: runArchiveProviderUnitTest },
+  { name: 'runtime config unit', run: runRuntimeConfigUnitTest },
   { name: 'codex cli integration', run: runCodexCliIntegrationTest },
   { name: 'recall cli integration', run: runRecallCliIntegrationTest },
   { name: 'page cli integration', run: runPageCliIntegrationTest },

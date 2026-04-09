@@ -20,6 +20,8 @@ declare module 'node:fs' {
   export function existsSync(path: string): boolean;
   export function mkdirSync(path: string, options?: { recursive?: boolean }): void;
   export function mkdtempSync(prefix: string): string;
+  export function readFileSync(path: string, encoding: string): string;
+  export function writeFileSync(path: string, data: string): void;
 }
 
 declare module 'node:os' {

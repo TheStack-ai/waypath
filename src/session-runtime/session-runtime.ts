@@ -28,6 +28,7 @@ export interface SessionRuntimeOptions {
   readonly storePath?: string;
   readonly store?: SqliteTruthKernelStorage;
   readonly autoSeed?: boolean;
+  readonly reviewQueueLimit?: number;
 }
 
 function normalizeList(values: readonly string[] | undefined): string[] {
@@ -416,16 +417,16 @@ function rankPromotedMemories(
     .map((entry) => entry.value);
 }
 
-function buildReviewQueue(store: SqliteTruthKernelStorage): string[] {
+function buildReviewQueue(store: SqliteTruthKernelStorage, limit: number): string[] {
   return store
-    .listPromotionCandidates(8)
+    .listPromotionCandidates(limit)
     .filter((candidate) => candidate.status === 'pending_review' || candidate.status === 'needs_more_evidence')
     .map((candidate) => `${candidate.candidate_id}: ${candidate.summary}`);
 }
 
-function buildStaleItems(store: SqliteTruthKernelStorage): string[] {
+function buildStaleItems(store: SqliteTruthKernelStorage, limit: number): string[] {
   return store
-    .listKnowledgePages(8, 'stale')
+    .listKnowledgePages(limit, 'stale')
     .map((page) => `${page.page.page_id}: ${page.page.title}`);
 }
 
@@ -525,6 +526,7 @@ function expandSnapshot(
 
 export function createSessionRuntime(options: SessionRuntimeOptions = {}): SessionRuntime {
   const store = options.store ?? createTruthKernelStorage(options.storePath ?? defaultTruthKernelStoreLocation());
+  const reviewQueueLimit = options.reviewQueueLimit ?? 8;
 
   return {
     buildContextPack(input: SessionStartInput): SessionContextPack {
@@ -598,9 +600,9 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
           superseded: rankedDecisions
             .filter((decision) => decision.superseded_by !== null)
             .map((decision) => decision.decision_id),
-          open_contradictions: [...store.listOpenPreferenceContradictions(8, projectEntityId)],
-          review_queue: buildReviewQueue(store),
-          stale_items: buildStaleItems(store),
+          open_contradictions: [...store.listOpenPreferenceContradictions(reviewQueueLimit, projectEntityId)],
+          review_queue: buildReviewQueue(store, reviewQueueLimit),
+          stale_items: buildStaleItems(store, reviewQueueLimit),
         },
         evidence_appendix: {
           enabled: false,

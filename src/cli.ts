@@ -5,6 +5,7 @@ import { probeLocalSourceAdapters } from './jarvis_fusion/source-readers-local.j
 import { createTruthKernelStorage, defaultTruthKernelStoreLocation } from './jarvis_fusion/truth-kernel/index.js';
 import { createFacade } from './facade';
 import { createCodexHostShim } from './host-shims';
+import { loadRuntimeConfig } from './shared/config';
 import { createCliArgs, formatUsage, writeLine, type CliIo } from './shared/cli';
 
 export function runCli(argv: string[], io: CliIo): number {
@@ -22,7 +23,13 @@ export function runCli(argv: string[], io: CliIo): number {
     return 0;
   }
 
-  const facadeOptions = parsed.storePath ? { storePath: parsed.storePath, autoSeed: true } : { autoSeed: true };
+  const runtimeConfig = loadRuntimeConfig().config;
+  const facadeOptions = {
+    ...(parsed.storePath ? { storePath: parsed.storePath } : {}),
+    autoSeed: true,
+    ...(runtimeConfig.retrieval?.weights ? { recallWeights: runtimeConfig.retrieval.weights } : {}),
+    ...(runtimeConfig.reviewQueue?.limit ? { reviewQueueLimit: runtimeConfig.reviewQueue.limit } : {}),
+  };
 
   if (parsed.command === 'codex') {
     const facade = createFacade(facadeOptions);
@@ -128,8 +135,11 @@ export function runCli(argv: string[], io: CliIo): number {
     const storePath = parsed.storePath ?? defaultTruthKernelStoreLocation();
     const store = createTruthKernelStorage(storePath, { autoMigrate: true });
     try {
-      const manifest = createLocalImportManifest(project);
-      if (manifest.reader_names.length === 0) {
+      const manifest = createLocalImportManifest(
+        project,
+        runtimeConfig.sourceAdapters?.enabled ? { enabled: runtimeConfig.sourceAdapters.enabled } : undefined,
+      );
+      if (manifest.reader_names.length === 0 && !runtimeConfig.import?.allowMissingLocalReaders) {
         io.stderr.write('No local source readers are available for import-local\n');
         return 1;
       }
@@ -149,7 +159,9 @@ export function runCli(argv: string[], io: CliIo): number {
     const result = {
       operation: 'source-status' as const,
       status: 'ready' as const,
-      sources: probeLocalSourceAdapters(),
+      sources: probeLocalSourceAdapters(
+        runtimeConfig.sourceAdapters?.enabled ? { enabled: runtimeConfig.sourceAdapters.enabled } : undefined,
+      ),
     };
     if (parsed.json) {
       writeLine(io, JSON.stringify(result, null, 2));
@@ -157,7 +169,7 @@ export function runCli(argv: string[], io: CliIo): number {
       for (const source of result.sources) {
         writeLine(
           io,
-          `${source.reader}: ${source.available ? source.adapter_status : 'missing'}${source.path ? ` (${source.path})` : ''}`,
+          `${source.reader}: ${source.enabled ? 'enabled' : 'disabled'} / ${source.available ? source.adapter_status : 'missing'}${source.path ? ` (${source.path})` : ''}`,
         );
       }
     }

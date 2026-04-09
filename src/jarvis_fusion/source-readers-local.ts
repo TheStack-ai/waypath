@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+import type { SourceAdapterEnabledMap } from '../contracts/index.js';
 import type { AccessTier, MemoryType } from './contracts.js';
 import type {
   ImportedDecisionInput,
@@ -218,8 +219,18 @@ export function localJarvisBrainReaderAvailable(): boolean {
 export interface LocalSourceProbe {
   readonly reader: string;
   readonly available: boolean;
+  readonly enabled: boolean;
   readonly path: string | null;
   readonly adapter_status: 'ready' | 'probe_only' | 'missing';
+}
+
+export interface LocalSourceAdapterOptions {
+  readonly enabled?: SourceAdapterEnabledMap;
+}
+
+function isSourceAdapterEnabled(reader: string, options: LocalSourceAdapterOptions | undefined): boolean {
+  const configured = options?.enabled?.[reader];
+  return configured ?? true;
 }
 
 function getMemPalaceCandidatePaths(): readonly string[] {
@@ -227,24 +238,27 @@ function getMemPalaceCandidatePaths(): readonly string[] {
   return envPath ? [envPath, ...DEFAULT_MEMPALACE_PATHS] : DEFAULT_MEMPALACE_PATHS;
 }
 
-export function probeLocalSourceAdapters(): readonly LocalSourceProbe[] {
+export function probeLocalSourceAdapters(options: LocalSourceAdapterOptions = {}): readonly LocalSourceProbe[] {
   const mempalacePath = getMemPalaceCandidatePaths().find((path) => existsSync(path)) ?? null;
   return [
     {
       reader: 'jarvis-memory-db',
       available: localJarvisReaderAvailable(),
+      enabled: isSourceAdapterEnabled('jarvis-memory-db', options),
       path: localJarvisReaderAvailable() ? getJarvisDbPath() : null,
       adapter_status: localJarvisReaderAvailable() ? 'ready' : 'missing',
     },
     {
       reader: 'jarvis-brain-db',
       available: localJarvisBrainReaderAvailable(),
+      enabled: isSourceAdapterEnabled('jarvis-brain-db', options),
       path: localJarvisBrainReaderAvailable() ? getJarvisBrainDbPath() : null,
       adapter_status: localJarvisBrainReaderAvailable() ? 'ready' : 'missing',
     },
     {
       reader: 'mempalace',
       available: mempalacePath !== null,
+      enabled: isSourceAdapterEnabled('mempalace', options),
       path: mempalacePath,
       adapter_status: mempalacePath ? 'probe_only' : 'missing',
     },
@@ -607,9 +621,13 @@ export function createJarvisBrainDbSourceReader(project = 'waypath'): SourceRead
   };
 }
 
-export function detectAvailableLocalReaderNames(): string[] {
+export function detectAvailableLocalReaderNames(options: LocalSourceAdapterOptions = {}): string[] {
   const names: string[] = [];
-  if (localJarvisReaderAvailable()) names.push('jarvis-memory-db');
-  if (localJarvisBrainReaderAvailable()) names.push('jarvis-brain-db');
+  if (localJarvisReaderAvailable() && isSourceAdapterEnabled('jarvis-memory-db', options)) {
+    names.push('jarvis-memory-db');
+  }
+  if (localJarvisBrainReaderAvailable() && isSourceAdapterEnabled('jarvis-brain-db', options)) {
+    names.push('jarvis-brain-db');
+  }
   return names;
 }

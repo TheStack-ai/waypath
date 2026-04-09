@@ -4,6 +4,7 @@ import {
   createJarvisBrainDbSourceReader,
   createJarvisMemoryDbSourceReader,
   detectAvailableLocalReaderNames,
+  type LocalSourceAdapterOptions,
 } from './source-readers-local.js';
 import type { BootstrapImportManifest, BootstrapImportResult, SourceReader } from './source-readers-contracts.js';
 import { SqliteTruthKernelStorage } from './truth-kernel/index.js';
@@ -21,8 +22,8 @@ function buildReaders(manifest: BootstrapImportManifest, project: string): Sourc
   });
 }
 
-export function createLocalImportManifest(project: string): BootstrapImportManifest {
-  const readerNames = detectAvailableLocalReaderNames();
+export function createLocalImportManifest(project: string, options: LocalSourceAdapterOptions = {}): BootstrapImportManifest {
+  const readerNames = detectAvailableLocalReaderNames(options);
   return {
     manifest_id: `local-import:${project}`,
     import_mode: 'bootstrap',

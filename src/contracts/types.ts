@@ -96,9 +96,19 @@ export interface ImportResult {
   message: string;
 }
 
+export interface SourceAdapterEnabledMap {
+  [readerName: string]: boolean | undefined;
+}
+
+export interface RecallWeightOverrides {
+  sourceSystems?: Record<string, number>;
+  sourceKinds?: Record<string, number>;
+}
+
 export interface LocalSourceStatusItem {
   reader: string;
   available: boolean;
+  enabled: boolean;
   path: string | null;
   adapter_status: 'ready' | 'probe_only' | 'missing';
 }

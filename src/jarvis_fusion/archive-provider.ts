@@ -1,6 +1,7 @@
 import type {
   EvidenceBundle,
   EvidenceItem,
+  RecallWeightOverrides,
 } from '../contracts/index.js';
 import type {
   TruthDecisionRecord,
@@ -39,6 +40,10 @@ interface RankedEvidenceItem {
   readonly score: number;
 }
 
+export interface LocalArchiveRuntimeOptions {
+  readonly weights?: RecallWeightOverrides;
+}
+
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -60,7 +65,12 @@ function metadataStringValue(metadata: Record<string, unknown>, key: string): st
   return typeof value === 'string' ? value : null;
 }
 
-function sourceSystemWeight(sourceSystem: string | null | undefined): number {
+function sourceSystemWeight(
+  sourceSystem: string | null | undefined,
+  options: LocalArchiveRuntimeOptions | undefined,
+): number {
+  const configured = sourceSystem ? options?.weights?.sourceSystems?.[sourceSystem] : undefined;
+  if (configured !== undefined) return configured;
   switch (sourceSystem) {
     case 'truth-kernel':
       return 1.1;
@@ -75,7 +85,12 @@ function sourceSystemWeight(sourceSystem: string | null | undefined): number {
   }
 }
 
-function sourceKindWeight(sourceKind: string | null | undefined): number {
+function sourceKindWeight(
+  sourceKind: string | null | undefined,
+  options: LocalArchiveRuntimeOptions | undefined,
+): number {
+  const configured = sourceKind ? options?.weights?.sourceKinds?.[sourceKind] : undefined;
+  if (configured !== undefined) return configured;
   switch (sourceKind) {
     case 'decision':
       return 0.8;
@@ -232,7 +247,11 @@ function passesFilters(item: EvidenceItem, filters: ArchiveSearchFilters | undef
   return true;
 }
 
-function scoreItem(item: EvidenceItem, tokens: readonly string[]): number {
+function scoreItem(
+  item: EvidenceItem,
+  tokens: readonly string[],
+  options: LocalArchiveRuntimeOptions | undefined,
+): number {
   const haystack = `${item.title}\n${item.excerpt}\n${item.source_ref}`.toLowerCase();
   let score = 0;
 
@@ -249,8 +268,8 @@ function scoreItem(item: EvidenceItem, tokens: readonly string[]): number {
   return (
     score +
     (item.confidence ?? 0) +
-    sourceSystemWeight(metadataStringValue(item.metadata, 'source_system')) +
-    sourceKindWeight(metadataStringValue(item.metadata, 'source_kind'))
+    sourceSystemWeight(metadataStringValue(item.metadata, 'source_system'), options) +
+    sourceKindWeight(metadataStringValue(item.metadata, 'source_kind'), options)
   );
 }
 
@@ -283,7 +302,11 @@ function makeBundleId(query: string): string {
   return `bundle:truth:${slugify(query)}:${nowIso()}`;
 }
 
-export function buildLocalArchiveBundle(query: string, store?: SqliteTruthKernelStorage): EvidenceBundle {
+export function buildLocalArchiveBundle(
+  query: string,
+  store?: SqliteTruthKernelStorage,
+  options: LocalArchiveRuntimeOptions = {},
+): EvidenceBundle {
   const normalizedQuery = query.trim();
   const tokens = tokenize(normalizedQuery);
   const evidenceItems = store ? collectStoreEvidence(store) : [];
@@ -311,7 +334,7 @@ export function buildLocalArchiveBundle(query: string, store?: SqliteTruthKernel
 
   const ranked = evidenceItems
     .filter((item) => passesFilters(item, undefined))
-    .map((item) => ({ item, score: scoreItem(item, tokens) }))
+    .map((item) => ({ item, score: scoreItem(item, tokens, options) }))
     .filter((entry) => entry.score > 0);
 
   return {
@@ -322,10 +345,13 @@ export function buildLocalArchiveBundle(query: string, store?: SqliteTruthKernel
   };
 }
 
-export function createLocalArchiveProvider(store?: SqliteTruthKernelStorage): ArchiveProvider {
+export function createLocalArchiveProvider(
+  store?: SqliteTruthKernelStorage,
+  options: LocalArchiveRuntimeOptions = {},
+): ArchiveProvider {
   return {
     async search(query: ArchiveSearchQuery, filters?: ArchiveSearchFilters): Promise<EvidenceBundle> {
-      const bundle = buildLocalArchiveBundle(query.query, store);
+      const bundle = buildLocalArchiveBundle(query.query, store, options);
       if (!filters) return query.limit === undefined ? bundle : { ...bundle, items: bundle.items.slice(0, query.limit) };
 
       const filtered = bundle.items.filter((item) => passesFilters(item, filters));
@@ -335,7 +361,7 @@ export function createLocalArchiveProvider(store?: SqliteTruthKernelStorage): Ar
       };
     },
     async getItem(evidenceId: string): Promise<EvidenceItem | null> {
-      const item = buildLocalArchiveBundle(evidenceId, store).items.find((candidate) => candidate.evidence_id === evidenceId);
+      const item = buildLocalArchiveBundle(evidenceId, store, options).items.find((candidate) => candidate.evidence_id === evidenceId);
       return item ?? null;
     },
     async health(): Promise<ArchiveHealth> {

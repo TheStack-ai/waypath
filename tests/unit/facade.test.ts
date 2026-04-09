@@ -61,4 +61,11 @@ export async function runFacadeUnitTest(): Promise<void> {
   assertEqual(candidateInspect.candidate?.status, 'accepted');
 
   facade.close();
+
+  const limitedFacade = createFacade({ storePath: `${root}/limited-truth.db`, autoSeed: true, reviewQueueLimit: 1 });
+  limitedFacade.promote('first queued item');
+  limitedFacade.promote('second queued item');
+  const limitedQueue = limitedFacade.reviewQueue();
+  assertEqual(limitedQueue.pending_review.length, 1, 'expected review queue limit to apply');
+  limitedFacade.close();
 }

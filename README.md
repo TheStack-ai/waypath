@@ -58,6 +58,58 @@ waypath source-status [--json]
 
 ---
 
+## Optional runtime config
+
+Waypath는 **zero-config 기본값**을 유지하지만, 현재 작업 디렉터리에 `config.toml`이 있거나
+`WAYPATH_CONFIG_PATH` / `JARVIS_FUSION_CONFIG_PATH`가 지정되어 있으면 런타임 knob를 읽습니다.
+
+우선순위:
+
+1. env override
+2. `config.toml`
+3. built-in defaults
+
+예시:
+
+```toml
+[source_adapters]
+jarvis-memory-db = true
+jarvis-brain-db = false
+mempalace = false
+
+[retrieval.source_system_weights]
+truth-kernel = 1.2
+demo-source = 0.1
+
+[retrieval.source_kind_weights]
+decision = 0.9
+memory = 0.5
+
+[import]
+allow_missing_local_readers = true
+
+[review_queue]
+limit = 12
+```
+
+대표 env override:
+
+```bash
+export WAYPATH_CONFIG_PATH=/path/to/config.toml
+export WAYPATH_SOURCE_ADAPTER_JARVIS_BRAIN_DB=false
+export WAYPATH_RECALL_WEIGHT_SOURCE_SYSTEM_TRUTH_KERNEL=1.8
+export WAYPATH_REVIEW_QUEUE_LIMIT=8
+```
+
+지원 범위:
+
+- source adapter enable/disable
+- recall source-system / source-kind weighting
+- `import-local`에서 local reader가 없어도 실패하지 않을지 여부
+- review queue / stale / contradiction surfacing limit
+
+---
+
 ## v1-core includes
 
 - shared backend + thin host shim 구조

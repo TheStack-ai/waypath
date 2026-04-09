@@ -7,6 +7,7 @@ import {
   type PromoteResult,
   type ReviewQueueResult,
   type ReviewResult,
+  type RecallWeightOverrides,
   type RecallResult,
   type SessionRuntime,
   type SessionStartInput,
@@ -20,6 +21,8 @@ import { createTruthKernelStorage, defaultTruthKernelStoreLocation } from '../ja
 
 export interface FacadeOptions extends SessionRuntimeOptions {
   readonly runtime?: SessionRuntime;
+  readonly recallWeights?: RecallWeightOverrides;
+  readonly reviewQueueLimit?: number;
 }
 
 export type ManagedFacadeApi = FacadeApi & {
@@ -49,6 +52,7 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
         runtime.buildContextPack(input),
         buildEvidenceQuery(input.project, input.objective, input.activeTask),
         store,
+        options.recallWeights,
       );
       return {
         operation: 'session-start',
@@ -57,7 +61,11 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
       };
     },
     recall(query: string): RecallResult {
-      const bundle = buildLocalArchiveBundle(query, store);
+      const bundle = buildLocalArchiveBundle(
+        query,
+        store,
+        options.recallWeights ? { weights: options.recallWeights } : undefined,
+      );
       store.upsertEvidenceBundle(bundle);
       return {
         operation: 'recall',
@@ -71,6 +79,7 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
         runtime.buildContextPack({ project: subject }),
         buildEvidenceQuery(subject),
         store,
+        options.recallWeights,
       );
       const page = synthesizeSessionPage(session, store);
       return {
@@ -110,14 +119,15 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
       };
     },
     reviewQueue(): ReviewQueueResult {
+      const reviewQueueLimit = options.reviewQueueLimit ?? 25;
       return {
         operation: 'review-queue',
         status: 'ready',
         pending_review: store
-          .listPromotionCandidates(25)
+          .listPromotionCandidates(reviewQueueLimit)
           .filter((candidate) => candidate.status === 'pending_review' || candidate.status === 'needs_more_evidence'),
-        stale_pages: store.listKnowledgePages(25, 'stale').map((page) => page.page),
-        open_contradictions: [...store.listOpenPreferenceContradictions(25)],
+        stale_pages: store.listKnowledgePages(reviewQueueLimit, 'stale').map((page) => page.page),
+        open_contradictions: [...store.listOpenPreferenceContradictions(reviewQueueLimit)],
       };
     },
     inspectPage(pageId: string): InspectPageResult {
@@ -169,8 +179,13 @@ function withEvidenceAppendix(
   pack: SessionStartResult['context_pack'],
   query: string,
   store: ReturnType<typeof createTruthKernelStorage>,
+  recallWeights?: RecallWeightOverrides,
 ): SessionStartResult['context_pack'] {
-  const evidenceBundle = buildLocalArchiveBundle(query, store);
+  const evidenceBundle = buildLocalArchiveBundle(
+    query,
+    store,
+    recallWeights ? { weights: recallWeights } : undefined,
+  );
   store.upsertEvidenceBundle(evidenceBundle);
   return evidenceBundle.items.length > 0
     ? {

@@ -19,6 +19,7 @@ declare module 'node:assert/strict' {
 
 declare module 'node:fs' {
   export function mkdtempSync(prefix: string): string;
+  export function writeFileSync(path: string, data: string): void;
 }
 
 declare module 'node:os' {
