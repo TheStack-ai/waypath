@@ -34,6 +34,30 @@ export function runArchiveProviderUnitTest(): void {
     confidence: 0.6,
     notes: null,
   } as never);
+  store.upsertProvenance({
+    provenance_id: 'prov:high-confidence',
+    source_system: 'truth-kernel',
+    source_kind: 'decision',
+    source_ref: 'fixture:high-confidence',
+    observed_at: timestamp,
+    imported_at: timestamp,
+    promoted_at: null,
+    promoted_by: null,
+    confidence: 0.95,
+    notes: null,
+  } as never);
+  store.upsertProvenance({
+    provenance_id: 'prov:low-confidence',
+    source_system: 'truth-kernel',
+    source_kind: 'decision',
+    source_ref: 'fixture:low-confidence',
+    observed_at: timestamp,
+    imported_at: timestamp,
+    promoted_at: null,
+    promoted_by: null,
+    confidence: 0.2,
+    notes: null,
+  } as never);
 
   store.upsertDecision({
     decision_id: 'decision:demo',
@@ -59,6 +83,54 @@ export function runArchiveProviderUnitTest(): void {
     created_at: timestamp,
     updated_at: timestamp,
   });
+  store.upsertDecision({
+    decision_id: 'decision:high-confidence',
+    title: 'Confidence candidate from strong provenance',
+    statement: 'confidence candidate from strong provenance',
+    status: 'active',
+    scope_entity_id: null,
+    effective_at: timestamp,
+    superseded_by: null,
+    provenance_id: 'prov:high-confidence',
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
+  store.upsertDecision({
+    decision_id: 'decision:low-confidence',
+    title: 'Confidence candidate from weak provenance',
+    statement: 'confidence candidate from weak provenance',
+    status: 'active',
+    scope_entity_id: null,
+    effective_at: timestamp,
+    superseded_by: null,
+    provenance_id: 'prov:low-confidence',
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
+  store.upsertDecision({
+    decision_id: 'decision:excerpt-match',
+    title: 'Excerpt only match',
+    statement: 'lexical edge appears in the excerpt body',
+    status: 'active',
+    scope_entity_id: null,
+    effective_at: timestamp,
+    superseded_by: null,
+    provenance_id: 'prov:high-confidence',
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
+  store.upsertDecision({
+    decision_id: 'decision:title-match',
+    title: 'Lexical edge title match',
+    statement: 'body text',
+    status: 'active',
+    scope_entity_id: null,
+    effective_at: timestamp,
+    superseded_by: null,
+    provenance_id: 'prov:high-confidence',
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
 
   const defaultBundle = buildLocalArchiveBundle('ranking candidate', store);
   assertEqual(defaultBundle.items[0]?.metadata.source_system, 'jarvis-brain-db');
@@ -72,6 +144,12 @@ export function runArchiveProviderUnitTest(): void {
     },
   });
   assertEqual(weightedBundle.items[0]?.metadata.source_system, 'demo-source');
+
+  const confidenceBundle = buildLocalArchiveBundle('confidence candidate', store);
+  assertEqual(confidenceBundle.items[0]?.source_ref, 'fixture:high-confidence');
+
+  const lexicalBundle = buildLocalArchiveBundle('lexical edge', store);
+  assertEqual(lexicalBundle.items[0]?.title, 'Decision: Lexical edge title match');
 
   store.close();
 }
