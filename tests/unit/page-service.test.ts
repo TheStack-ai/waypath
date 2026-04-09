@@ -31,6 +31,13 @@ export function runPageServiceUnitTest(): void {
   });
 
   const page = synthesizeSessionPage({
+    session: {
+      session_id: 'graph-project:page-service-test',
+      host: 'codex',
+      project: 'graph-project',
+      objective: 'assemble graph-aware pages',
+      active_task: 'page-service-test',
+    },
     current_focus: {
       project: 'graph-project',
       objective: 'assemble graph-aware pages',
@@ -56,6 +63,36 @@ export function runPageServiceUnitTest(): void {
       open_contradictions: ['Preference conflict on workspace: context_mode -> graph-aware | linear'],
       review_queue: ['promotion:graph-project:review-me: Candidate awaiting explicit review'],
       stale_items: ['page:stale:graph-project: stale project page'],
+      contradiction_items: [
+        {
+          contradiction_id: 'contradiction:workspace:context_mode:1',
+          kind: 'preference_conflict',
+          scope_ref: 'workspace',
+          key: 'context_mode',
+          values: ['graph-aware', 'linear'],
+          summary: 'Preference conflict on workspace: context_mode -> graph-aware | linear',
+          updated_at: timestamp,
+        },
+      ],
+      review_queue_items: [
+        {
+          candidate_id: 'promotion:graph-project:review-me',
+          status: 'pending_review',
+          subject: 'review me',
+          summary: 'Candidate awaiting explicit review',
+          created_at: timestamp,
+        },
+      ],
+      stale_item_details: [
+        {
+          page_id: 'page:stale:graph-project',
+          page_type: 'project_page',
+          title: 'stale project page',
+          status: 'stale',
+          updated_at: timestamp,
+          summary: 'page:stale:graph-project: stale project page',
+        },
+      ],
     },
     evidence_appendix: {
       enabled: true,
