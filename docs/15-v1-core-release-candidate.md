@@ -62,6 +62,17 @@ waypath inspect-candidate --json --candidate-id <id> --store-path /tmp/jf-demo.d
 - adaptive learning/ranking loop
 - hosted or multi-user operation
 
+## Phase 3 compatibility guardrails
+
+Domain-model hardening is allowed to make internal shapes more explicit, but it must stay
+non-breaking for the current operator-facing surface. Until a major version change is declared:
+
+- command names / flags stay the same (`codex`, `recall`, `page`, `promote`, `review`, `review-queue`, `inspect-page`, `inspect-candidate`)
+- `codex --json` keeps `session.context_pack.current_focus.activeTask`
+- `review-queue --json` keeps `pending_review`, `stale_pages`, and `open_contradictions`
+- human-readable `review-queue` output stays the same count-based summary lines
+- inspect commands keep the same flag names and result envelope shape
+
 ## final verification baseline
 
 - `npm run typecheck`
