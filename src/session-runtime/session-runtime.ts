@@ -13,6 +13,7 @@ import {
   type SessionStartSnapshot,
   type SqliteTruthKernelStorage,
 } from '../jarvis_fusion/truth-kernel/index.js';
+import { createRetrievalStrategy } from '../archive-kernel/retrieval/index.js';
 import type {
   TruthDecisionRecord,
   TruthEntityRecord,
@@ -271,6 +272,28 @@ function entityCategoryWeight(entity: TruthEntityRecord, projectEntityId: string
   }
 }
 
+const runtimeRetrievalStrategy = createRetrievalStrategy({
+  profile: {
+    sourceSystems: {
+      'truth-kernel': 1.2,
+      'jarvis-brain-db': 0.95,
+      'jarvis-memory-db': 0.85,
+      'demo-source': 0.35,
+    },
+    sourceKinds: {
+      decision: 0.8,
+      preference: 0.75,
+      relationship: 0.7,
+      memory: 0.65,
+      database: 0.4,
+    },
+    missingSourceSystemWeight: 0.5,
+    unknownSourceSystemWeight: 0.6,
+    missingSourceKindWeight: 0.3,
+    unknownSourceKindWeight: 0.5,
+  },
+});
+
 function rankEntities(
   store: SqliteTruthKernelStorage,
   entities: readonly TruthEntityRecord[],
@@ -294,21 +317,13 @@ function rankEntities(
   return entities
     .map<ScoredValue<TruthEntityRecord>>((entity) => {
       const provenance = entityProvenance(store, entity);
-      const score = strategy.score(
-        {
-          id: entity.entity_id,
-          kind: 'session-entity',
-          title: entity.name,
-          excerpt: entity.summary,
-          sourceRef: provenance?.source_ref ?? `truth:${entity.entity_id}`,
-          sourceSystem: provenance?.source_system ?? null,
-          sourceKind: provenance?.source_kind ?? null,
-          confidence: provenance?.confidence ?? null,
-          baseline: entityCategoryWeight(entity, projectEntityId),
-          graphRelevance: (connectionCounts.get(entity.entity_id) ?? 0) * 0.45,
-        },
-        focusTokens,
-      ).total;
+      const score = runtimeRetrievalStrategy.score({
+        baseScore: entityCategoryWeight(entity, projectEntityId),
+        sourceSystem: provenance?.source_system,
+        sourceKind: provenance?.source_kind,
+        provenanceConfidence: provenance?.confidence ?? 0.5,
+        graphRelevance: (connectionCounts.get(entity.entity_id) ?? 0) * 0.45,
+      }).total;
       return { value: entity, score };
     })
     .sort((left, right) => {
@@ -331,21 +346,13 @@ function rankDecisions(
       const scopeScore = decision.scope_entity_id ? entityScores.get(decision.scope_entity_id) ?? 0 : 0;
       return {
         value: decision,
-        score: strategy.score(
-          {
-            id: decision.decision_id,
-            kind: 'session-decision',
-            title: decision.title,
-            excerpt: decision.statement,
-            sourceRef: provenance?.source_ref ?? `truth:${decision.decision_id}`,
-            sourceSystem: provenance?.source_system ?? null,
-            sourceKind: provenance?.source_kind ?? null,
-            confidence: provenance?.confidence ?? null,
-            baseline: 4,
-            graphRelevance: scopeScore * 0.18,
-          },
-          focusTokens,
-        ).total,
+        score: runtimeRetrievalStrategy.score({
+          baseScore: 4,
+          sourceSystem: provenance?.source_system,
+          sourceKind: provenance?.source_kind,
+          provenanceConfidence: provenance?.confidence ?? 0.5,
+          graphRelevance: scopeScore * 0.18,
+        }).total,
       };
     })
     .sort((left, right) => {
@@ -370,21 +377,13 @@ function rankPreferences(
         preference.strength === 'high' ? 1.1 : preference.strength === 'medium' ? 0.7 : 0.3;
       return {
         value: preference,
-        score: strategy.score(
-          {
-            id: preference.preference_id,
-            kind: 'session-preference',
-            title: preference.key,
-            excerpt: `${preference.key}=${preference.value} (${preference.strength})`,
-            sourceRef: provenance?.source_ref ?? `truth:${preference.preference_id}`,
-            sourceSystem: provenance?.source_system ?? null,
-            sourceKind: provenance?.source_kind ?? null,
-            confidence: provenance?.confidence ?? null,
-            baseline: 3.6 + strengthBoost,
-            graphRelevance: subjectScore * 0.16,
-          },
-          focusTokens,
-        ).total,
+        score: runtimeRetrievalStrategy.score({
+          baseScore: 3.6 + strengthBoost,
+          sourceSystem: provenance?.source_system,
+          sourceKind: provenance?.source_kind,
+          provenanceConfidence: provenance?.confidence ?? 0.5,
+          graphRelevance: subjectScore * 0.16,
+        }).total,
       };
     })
     .sort((left, right) => {
@@ -407,21 +406,13 @@ function rankPromotedMemories(
       const subjectScore = memory.subject_entity_id ? entityScores.get(memory.subject_entity_id) ?? 0 : 0;
       return {
         value: memory,
-        score: strategy.score(
-          {
-            id: memory.memory_id,
-            kind: 'session-promoted-memory',
-            title: memory.summary,
-            excerpt: memory.content,
-            sourceRef: provenance?.source_ref ?? `truth:${memory.memory_id}`,
-            sourceSystem: provenance?.source_system ?? null,
-            sourceKind: provenance?.source_kind ?? null,
-            confidence: provenance?.confidence ?? null,
-            baseline: 3.4,
-            graphRelevance: subjectScore * 0.14,
-          },
-          focusTokens,
-        ).total,
+        score: runtimeRetrievalStrategy.score({
+          baseScore: 3.4,
+          sourceSystem: provenance?.source_system,
+          sourceKind: provenance?.source_kind,
+          provenanceConfidence: provenance?.confidence ?? 0.5,
+          graphRelevance: subjectScore * 0.14,
+        }).total,
       };
     })
     .sort((left, right) => {

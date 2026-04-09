@@ -3,6 +3,7 @@ import type {
   EvidenceItem,
   RecallWeightOverrides,
 } from '../contracts/index.js';
+import { createRetrievalStrategy } from '../archive-kernel/retrieval/index.js';
 import type {
   TruthDecisionRecord,
   TruthEntityRecord,
@@ -53,17 +54,14 @@ function slugify(value: string): string {
   return value.replace(/\s+/g, '-').toLowerCase() || 'empty';
 }
 
-function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .split(/\s+/)
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0);
-}
-
 function metadataStringValue(metadata: Record<string, unknown>, key: string): string | null {
   const value = metadata[key];
   return typeof value === 'string' ? value : null;
+}
+
+function metadataNumberValue(metadata: Record<string, unknown>, key: string): number | null {
+  const value = metadata[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function toItem(
@@ -206,26 +204,6 @@ function passesFilters(item: EvidenceItem, filters: ArchiveSearchFilters | undef
   return true;
 }
 
-function scoreItem(
-  item: EvidenceItem,
-  tokens: readonly string[],
-  strategy: ReturnType<typeof createRetrievalStrategy>,
-): number {
-  return strategy.score(
-    {
-      id: item.evidence_id,
-      kind: 'archive-evidence',
-      title: item.title,
-      excerpt: item.excerpt,
-      sourceRef: item.source_ref,
-      sourceSystem: metadataStringValue(item.metadata, 'source_system'),
-      sourceKind: metadataStringValue(item.metadata, 'source_kind'),
-      confidence: item.confidence,
-    },
-    tokens,
-  ).total;
-}
-
 function sortRankedItems(items: readonly RankedEvidenceItem[]): EvidenceItem[] {
   return [...items]
     .sort((left, right) => {
@@ -261,17 +239,6 @@ export function buildLocalArchiveBundle(
   options: LocalArchiveRuntimeOptions = {},
 ): EvidenceBundle {
   const normalizedQuery = query.trim();
-  const tokens = tokenize(normalizedQuery);
-  const strategy = createRetrievalStrategy(
-    options.weights
-      ? {
-          profile: 'archive-recall',
-          weights: options.weights,
-        }
-      : {
-          profile: 'archive-recall',
-        },
-  );
   const evidenceItems = store ? collectStoreEvidence(store) : [];
 
   if (!store) {
@@ -295,9 +262,24 @@ export function buildLocalArchiveBundle(
     };
   }
 
+  const strategy = createRetrievalStrategy({
+    query: normalizedQuery,
+    weights: options.weights,
+  });
   const ranked = evidenceItems
     .filter((item) => passesFilters(item, undefined))
-    .map((item) => ({ item, score: scoreItem(item, tokens, strategy) }))
+    .map((item) => ({
+      item,
+      score: strategy.score({
+        title: item.title,
+        excerpt: item.excerpt,
+        sourceRef: item.source_ref,
+        provenanceConfidence: item.confidence,
+        sourceSystem: metadataStringValue(item.metadata, 'source_system'),
+        sourceKind: metadataStringValue(item.metadata, 'source_kind'),
+        graphRelevance: metadataNumberValue(item.metadata, 'graph_relevance'),
+      }).total,
+    }))
     .filter((entry) => entry.score > 0);
 
   return {
