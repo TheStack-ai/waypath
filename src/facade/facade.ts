@@ -131,7 +131,17 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
       const reviewQueueLimit = options.reviewQueueLimit ?? 25;
       const pendingReview = store
         .listPromotionCandidates(reviewQueueLimit)
-        .filter((candidate) => candidate.status === 'pending_review' || candidate.status === 'needs_more_evidence');
+        .filter(
+          (
+            candidate,
+          ): candidate is {
+            candidate_id: string;
+            subject: string;
+            status: 'pending_review' | 'needs_more_evidence';
+            summary: string;
+            created_at: string;
+          } => candidate.status === 'pending_review' || candidate.status === 'needs_more_evidence',
+        );
       const staleItems = store.listKnowledgePages(reviewQueueLimit, 'stale').map<StaleItem>((page) => ({
         page_id: page.page.page_id,
         page_type: page.page.page_type,
@@ -161,7 +171,7 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
       return {
         operation: 'review-queue',
         status: 'ready',
-        pending_review,
+        pending_review: pendingReview,
         stale_pages: staleItems.map((item) => ({
           page_id: item.page_id,
           page_type: item.page_type,
