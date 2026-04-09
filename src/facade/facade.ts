@@ -1,4 +1,5 @@
 import {
+  type ContradictionItem,
   type FacadeApi,
   type FacadeDescription,
   type InspectCandidateResult,
@@ -9,9 +10,11 @@ import {
   type ReviewResult,
   type RecallWeightOverrides,
   type RecallResult,
+  type ReviewQueueItem,
   type SessionRuntime,
   type SessionStartInput,
   type SessionStartResult,
+  type StaleItem,
 } from '../contracts';
 import { createSessionRuntime, type SessionRuntimeOptions } from '../session-runtime';
 import { buildLocalArchiveBundle } from '../jarvis_fusion/archive-provider.js';
@@ -47,6 +50,7 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
       return description;
     },
     sessionStart(input: SessionStartInput): SessionStartResult {
+      const sessionId = makeSessionId(input);
       const session = withEvidenceAppendix(
         runtime.buildContextPack(input),
         buildEvidenceQuery(input.project, input.objective, input.activeTask),
@@ -55,8 +59,14 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
       );
       return {
         operation: 'session-start',
-        session_id: makeSessionId(input),
-        context_pack: session,
+        session_id: sessionId,
+        context_pack: {
+          ...session,
+          session: {
+            ...session.session,
+            session_id: sessionId,
+          },
+        },
       };
     },
     recall(query: string): RecallResult {
@@ -119,14 +129,55 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
     },
     reviewQueue(): ReviewQueueResult {
       const reviewQueueLimit = options.reviewQueueLimit ?? 25;
+      const pendingReview = store
+        .listPromotionCandidates(reviewQueueLimit)
+        .filter((candidate) => candidate.status === 'pending_review' || candidate.status === 'needs_more_evidence');
+      const staleItems = store.listKnowledgePages(reviewQueueLimit, 'stale').map<StaleItem>((page) => ({
+        page_id: page.page.page_id,
+        page_type: page.page.page_type,
+        title: page.page.title,
+        status: 'stale',
+        updated_at: page.updated_at,
+        summary: `${page.page.page_id}: ${page.page.title}`,
+      }));
+      const contradictionItems = store.listOpenPreferenceContradictions(reviewQueueLimit).map<ContradictionItem>((summary, index) => {
+        const match = /^Preference conflict on (.*?): ([^:]+) -> (.+)$/u.exec(summary);
+        const scope_ref = match?.[1] ?? 'workspace';
+        const key = match?.[2] ?? `conflict_${index + 1}`;
+        const values = (match?.[3] ?? '')
+          .split(' | ')
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0);
+        return {
+          contradiction_id: `contradiction:${scope_ref}:${key}:${index + 1}`,
+          kind: 'preference_conflict',
+          scope_ref,
+          key,
+          values,
+          summary,
+          updated_at: new Date().toISOString(),
+        };
+      });
       return {
         operation: 'review-queue',
         status: 'ready',
-        pending_review: store
-          .listPromotionCandidates(reviewQueueLimit)
-          .filter((candidate) => candidate.status === 'pending_review' || candidate.status === 'needs_more_evidence'),
-        stale_pages: store.listKnowledgePages(reviewQueueLimit, 'stale').map((page) => page.page),
-        open_contradictions: [...store.listOpenPreferenceContradictions(reviewQueueLimit)],
+        pending_review,
+        stale_pages: staleItems.map((item) => ({
+          page_id: item.page_id,
+          page_type: item.page_type,
+          title: item.title,
+          status: item.status,
+        })),
+        open_contradictions: contradictionItems.map((item) => item.summary),
+        review_queue_items: pendingReview.map<ReviewQueueItem>((candidate) => ({
+          candidate_id: candidate.candidate_id,
+          status: candidate.status,
+          subject: candidate.subject,
+          summary: candidate.summary,
+          created_at: candidate.created_at,
+        })),
+        stale_items: staleItems,
+        contradiction_items: contradictionItems,
       };
     },
     inspectPage(pageId: string): InspectPageResult {
