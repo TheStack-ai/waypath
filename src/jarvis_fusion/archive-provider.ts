@@ -3,6 +3,7 @@ import type {
   EvidenceItem,
   RecallWeightOverrides,
 } from '../contracts/index.js';
+import { createRetrievalStrategy } from '../archive-kernel/retrieval/index.js';
 import type {
   TruthDecisionRecord,
   TruthEntityRecord,
@@ -65,46 +66,9 @@ function metadataStringValue(metadata: Record<string, unknown>, key: string): st
   return typeof value === 'string' ? value : null;
 }
 
-function sourceSystemWeight(
-  sourceSystem: string | null | undefined,
-  options: LocalArchiveRuntimeOptions | undefined,
-): number {
-  const configured = sourceSystem ? options?.weights?.sourceSystems?.[sourceSystem] : undefined;
-  if (configured !== undefined) return configured;
-  switch (sourceSystem) {
-    case 'truth-kernel':
-      return 1.1;
-    case 'jarvis-brain-db':
-      return 0.95;
-    case 'jarvis-memory-db':
-      return 0.85;
-    case 'demo-source':
-      return 0.3;
-    default:
-      return sourceSystem ? 0.5 : 0.4;
-  }
-}
-
-function sourceKindWeight(
-  sourceKind: string | null | undefined,
-  options: LocalArchiveRuntimeOptions | undefined,
-): number {
-  const configured = sourceKind ? options?.weights?.sourceKinds?.[sourceKind] : undefined;
-  if (configured !== undefined) return configured;
-  switch (sourceKind) {
-    case 'decision':
-      return 0.8;
-    case 'preference':
-      return 0.75;
-    case 'relationship':
-      return 0.65;
-    case 'memory':
-      return 0.6;
-    case 'database':
-      return 0.35;
-    default:
-      return sourceKind ? 0.45 : 0.25;
-  }
+function metadataNumberValue(metadata: Record<string, unknown>, key: string): number | null {
+  const value = metadata[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function toItem(
@@ -247,32 +211,6 @@ function passesFilters(item: EvidenceItem, filters: ArchiveSearchFilters | undef
   return true;
 }
 
-function scoreItem(
-  item: EvidenceItem,
-  tokens: readonly string[],
-  options: LocalArchiveRuntimeOptions | undefined,
-): number {
-  const haystack = `${item.title}\n${item.excerpt}\n${item.source_ref}`.toLowerCase();
-  let score = 0;
-
-  for (const token of tokens) {
-    if (haystack.includes(token)) {
-      score += item.title.toLowerCase().includes(token) ? 3 : 1;
-    }
-  }
-
-  if (score === 0 && tokens.length > 0) {
-    return 0;
-  }
-
-  return (
-    score +
-    (item.confidence ?? 0) +
-    sourceSystemWeight(metadataStringValue(item.metadata, 'source_system'), options) +
-    sourceKindWeight(metadataStringValue(item.metadata, 'source_kind'), options)
-  );
-}
-
 function sortRankedItems(items: readonly RankedEvidenceItem[]): EvidenceItem[] {
   return [...items]
     .sort((left, right) => {
@@ -308,7 +246,6 @@ export function buildLocalArchiveBundle(
   options: LocalArchiveRuntimeOptions = {},
 ): EvidenceBundle {
   const normalizedQuery = query.trim();
-  const tokens = tokenize(normalizedQuery);
   const evidenceItems = store ? collectStoreEvidence(store) : [];
 
   if (!store) {
@@ -332,9 +269,24 @@ export function buildLocalArchiveBundle(
     };
   }
 
+  const strategy = createRetrievalStrategy({
+    query: normalizedQuery,
+    weights: options.weights,
+  });
   const ranked = evidenceItems
     .filter((item) => passesFilters(item, undefined))
-    .map((item) => ({ item, score: scoreItem(item, tokens, options) }))
+    .map((item) => ({
+      item,
+      score: strategy.score({
+        title: item.title,
+        excerpt: item.excerpt,
+        sourceRef: item.source_ref,
+        provenanceConfidence: item.confidence,
+        sourceSystem: metadataStringValue(item.metadata, 'source_system'),
+        sourceKind: metadataStringValue(item.metadata, 'source_kind'),
+        graphRelevance: metadataNumberValue(item.metadata, 'graph_relevance'),
+      }).total,
+    }))
     .filter((entry) => entry.score > 0);
 
   return {

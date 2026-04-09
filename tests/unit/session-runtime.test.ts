@@ -37,6 +37,17 @@ export function runSessionRuntimeUnitTest(): void {
     created_at: timestamp,
     updated_at: timestamp,
   });
+  store.upsertEntity({
+    entity_id: 'system:detached-cli',
+    entity_type: 'system',
+    name: 'Detached CLI',
+    summary: 'Similar host entry point without graph links.',
+    state_json: JSON.stringify({ host: 'detached' }),
+    status: 'active',
+    canonical_page_id: null,
+    created_at: timestamp,
+    updated_at: timestamp,
+  });
   store.upsertDecision({
     decision_id: 'decision:demo-project:graph-briefs',
     title: 'Bridge imported references into session context',
@@ -170,7 +181,15 @@ export function runSessionRuntimeUnitTest(): void {
     pack.truth_highlights.entities.includes('Codex CLI'),
     'expected graph-linked entity in truth highlights',
   );
+  assert(
+    pack.truth_highlights.entities.includes('Detached CLI'),
+    'expected disconnected comparison entity in truth highlights',
+  );
   assertEqual(pack.truth_highlights.entities[0], 'demo-project', 'expected project entity to stay highest priority');
+  assert(
+    pack.truth_highlights.entities.indexOf('Codex CLI') < pack.truth_highlights.entities.indexOf('Detached CLI'),
+    'expected graph relevance to outrank an otherwise similar disconnected system',
+  );
   assertDeepEqual(pack.graph_context.seed_entities, ['entity-a', 'entity-b']);
   assert(
     pack.graph_context.related_entities.includes('project:demo-project:imported'),

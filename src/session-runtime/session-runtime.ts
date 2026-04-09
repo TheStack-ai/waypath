@@ -11,6 +11,7 @@ import {
   type SessionStartSnapshot,
   type SqliteTruthKernelStorage,
 } from '../jarvis_fusion/truth-kernel/index.js';
+import { createRetrievalStrategy } from '../archive-kernel/retrieval/index.js';
 import type {
   TruthDecisionRecord,
   TruthEntityRecord,
@@ -209,38 +210,6 @@ function buildEntityLabel(
   return entity ? `${entity.name} (${entity.entity_id})` : entityId;
 }
 
-function sourceSystemWeight(sourceSystem: string | null | undefined): number {
-  switch (sourceSystem) {
-    case 'truth-kernel':
-      return 1.2;
-    case 'jarvis-brain-db':
-      return 0.95;
-    case 'jarvis-memory-db':
-      return 0.85;
-    case 'demo-source':
-      return 0.35;
-    default:
-      return sourceSystem ? 0.6 : 0.5;
-  }
-}
-
-function sourceKindWeight(sourceKind: string | null | undefined): number {
-  switch (sourceKind) {
-    case 'decision':
-      return 0.8;
-    case 'preference':
-      return 0.75;
-    case 'relationship':
-      return 0.7;
-    case 'memory':
-      return 0.65;
-    case 'database':
-      return 0.4;
-    default:
-      return sourceKind ? 0.5 : 0.3;
-  }
-}
-
 function relationshipTypeWeight(relationType: string): number {
   switch (relationType) {
     case 'has_active_task':
@@ -300,6 +269,8 @@ function entityCategoryWeight(entity: TruthEntityRecord, projectEntityId: string
   }
 }
 
+const runtimeRetrievalStrategy = createRetrievalStrategy();
+
 function rankEntities(
   store: SqliteTruthKernelStorage,
   entities: readonly TruthEntityRecord[],
@@ -321,12 +292,13 @@ function rankEntities(
   return entities
     .map<ScoredValue<TruthEntityRecord>>((entity) => {
       const provenance = entityProvenance(store, entity);
-      const score =
-        entityCategoryWeight(entity, projectEntityId) +
-        sourceSystemWeight(provenance?.source_system) +
-        sourceKindWeight(provenance?.source_kind) +
-        (provenance?.confidence ?? 0.5) +
-        (connectionCounts.get(entity.entity_id) ?? 0) * 0.45;
+      const score = runtimeRetrievalStrategy.score({
+        baseScore: entityCategoryWeight(entity, projectEntityId),
+        sourceSystem: provenance?.source_system,
+        sourceKind: provenance?.source_kind,
+        provenanceConfidence: provenance?.confidence ?? 0.5,
+        graphRelevance: (connectionCounts.get(entity.entity_id) ?? 0) * 0.45,
+      }).total;
       return { value: entity, score };
     })
     .sort((left, right) => {
@@ -347,12 +319,13 @@ function rankDecisions(
       const scopeScore = decision.scope_entity_id ? entityScores.get(decision.scope_entity_id) ?? 0 : 0;
       return {
         value: decision,
-        score:
-          4 +
-          sourceSystemWeight(provenance?.source_system) +
-          sourceKindWeight(provenance?.source_kind) +
-          (provenance?.confidence ?? 0.5) +
-          scopeScore * 0.18,
+        score: runtimeRetrievalStrategy.score({
+          baseScore: 4,
+          sourceSystem: provenance?.source_system,
+          sourceKind: provenance?.source_kind,
+          provenanceConfidence: provenance?.confidence ?? 0.5,
+          graphRelevance: scopeScore * 0.18,
+        }).total,
       };
     })
     .sort((left, right) => {
@@ -375,13 +348,13 @@ function rankPreferences(
         preference.strength === 'high' ? 1.1 : preference.strength === 'medium' ? 0.7 : 0.3;
       return {
         value: preference,
-        score:
-          3.6 +
-          strengthBoost +
-          sourceSystemWeight(provenance?.source_system) +
-          sourceKindWeight(provenance?.source_kind) +
-          (provenance?.confidence ?? 0.5) +
-          subjectScore * 0.16,
+        score: runtimeRetrievalStrategy.score({
+          baseScore: 3.6 + strengthBoost,
+          sourceSystem: provenance?.source_system,
+          sourceKind: provenance?.source_kind,
+          provenanceConfidence: provenance?.confidence ?? 0.5,
+          graphRelevance: subjectScore * 0.16,
+        }).total,
       };
     })
     .sort((left, right) => {
@@ -402,12 +375,13 @@ function rankPromotedMemories(
       const subjectScore = memory.subject_entity_id ? entityScores.get(memory.subject_entity_id) ?? 0 : 0;
       return {
         value: memory,
-        score:
-          3.4 +
-          sourceSystemWeight(provenance?.source_system) +
-          sourceKindWeight(provenance?.source_kind) +
-          (provenance?.confidence ?? 0.5) +
-          subjectScore * 0.14,
+        score: runtimeRetrievalStrategy.score({
+          baseScore: 3.4,
+          sourceSystem: provenance?.source_system,
+          sourceKind: provenance?.source_kind,
+          provenanceConfidence: provenance?.confidence ?? 0.5,
+          graphRelevance: subjectScore * 0.14,
+        }).total,
       };
     })
     .sort((left, right) => {
