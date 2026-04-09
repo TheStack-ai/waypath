@@ -11,7 +11,6 @@ import type {
   TruthPromotedMemoryRecord,
 } from './contracts.js';
 import type { SqliteTruthKernelStorage } from './truth-kernel/index.js';
-import { createRetrievalStrategy } from '../archive-kernel/retrieval/index.js';
 
 export interface ArchiveSearchQuery {
   readonly query: string;

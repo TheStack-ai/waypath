@@ -7,7 +7,6 @@ import {
   type SessionStartInput,
   type StaleItem,
 } from '../contracts';
-import { createRetrievalStrategy } from '../archive-kernel/index.js';
 import {
   createTruthKernelStorage,
   defaultTruthKernelStoreLocation,
@@ -428,7 +427,17 @@ function rankPromotedMemories(
 function buildReviewQueue(store: SqliteTruthKernelStorage, limit: number): ReviewQueueItem[] {
   return store
     .listPromotionCandidates(limit)
-    .filter((candidate) => candidate.status === 'pending_review' || candidate.status === 'needs_more_evidence')
+    .filter(
+      (
+        candidate,
+      ): candidate is {
+        candidate_id: string;
+        subject: string;
+        status: 'pending_review' | 'needs_more_evidence';
+        summary: string;
+        created_at: string;
+      } => candidate.status === 'pending_review' || candidate.status === 'needs_more_evidence',
+    )
     .map((candidate) => ({
       candidate_id: candidate.candidate_id,
       status: candidate.status,
@@ -496,18 +505,11 @@ function formatGraphRelationships(
         (entityScores.get(relationship.to_entity_id) ?? 0);
       return {
         value: summary,
-        score: strategy.score(
-          {
-            id: relationship.relationship_id,
-            kind: 'session-relationship',
-            title: summary,
-            baseline: relationshipTypeWeight(relationship.relation_type),
-            graphRelevance: (relationship.weight ?? 0) + endpointScore * 0.08,
-            enableSourceWeight: false,
-            enableProvenance: false,
-          },
-          focusTokens,
-        ).total,
+        score: strategy.score({
+          title: summary,
+          baseScore: relationshipTypeWeight(relationship.relation_type),
+          graphRelevance: (relationship.weight ?? 0) + endpointScore * 0.08,
+        }).total,
       };
     }),
     ...decisions
@@ -605,14 +607,10 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
       const seedEntities = normalizeList(input.seedEntities);
       const focusTokens = buildFocusTokens(project, objective, activeTask);
       const retrievalStrategy = createRetrievalStrategy(
-        options.recallWeights
-          ? {
-              profile: 'session-runtime',
-              weights: options.recallWeights,
-            }
-          : {
-              profile: 'session-runtime',
-            },
+        {
+          query: focusTokens.join(' '),
+          ...(options.recallWeights ? { weights: options.recallWeights } : {}),
+        },
       );
 
       if (options.autoSeed ?? true) {
