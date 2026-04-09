@@ -38,7 +38,7 @@ export function runSessionRuntimeUnitTest(): void {
     updated_at: timestamp,
   });
   store.upsertEntity({
-    entity_id: 'system:detached-cli',
+    entity_id: 'project:demo-project:detached-cli',
     entity_type: 'system',
     name: 'Detached CLI',
     summary: 'Similar host entry point without graph links.',

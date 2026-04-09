@@ -25,8 +25,8 @@ export function runRetrievalStrategyUnitTest(): void {
   assertEqual(Number(ranked.total.toFixed(2)), 9.75);
 
   const noMatch = strategy.score({
-    title: 'Disconnected context',
-    excerpt: 'No lexical match should gate this candidate.',
+    title: 'Off topic context',
+    excerpt: 'Fallback evidence from an unrelated source.',
     sourceRef: 'truth:disconnected',
     provenanceConfidence: 0.9,
     sourceSystem: 'truth-kernel',
