@@ -104,9 +104,11 @@ export WAYPATH_REVIEW_QUEUE_LIMIT=8
 지원 범위:
 
 - source adapter enable/disable
-- recall source-system / source-kind weighting
+- retrieval source-system / source-kind weighting (`recall` command와 session scoring 모두에 적용)
 - `import-local`에서 local reader가 없어도 실패하지 않을지 여부
 - review queue / stale / contradiction surfacing limit
+
+관련 설계/구현 가이드는 `docs/16-retrieval-strategy-separation.md`를 기준으로 본다.
 
 ---
 
@@ -198,6 +200,12 @@ export WAYPATH_REVIEW_QUEUE_LIMIT=8
   - 핵심 객체와 retrieval/promote/wiki/session-start flow 정의
 - `docs/13-core-schemas-and-contracts.md`
   - Truth schema, graph schema, context pack, page/promotion contract 고정
+- `docs/15-v1-core-release-candidate.md`
+  - 현재 tarball install 기준 release candidate 상태
+  - install / smoke / verification baseline
+- `docs/16-retrieval-strategy-separation.md`
+  - retrieval strategy layer review checklist
+  - non-breaking ranking/documentation invariants
 
 ### canonical next-step reading order
 1. `docs/06-source-extraction-matrix.md`
