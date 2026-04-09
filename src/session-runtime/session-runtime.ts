@@ -1,8 +1,10 @@
 import {
+  type RecallWeightOverrides,
   type SessionContextPack,
   type SessionRuntime,
   type SessionStartInput,
 } from '../contracts';
+import { createRetrievalStrategy } from '../archive-kernel/index.js';
 import {
   createTruthKernelStorage,
   defaultTruthKernelStoreLocation,
@@ -28,6 +30,7 @@ export interface SessionRuntimeOptions {
   readonly storePath?: string;
   readonly store?: SqliteTruthKernelStorage;
   readonly autoSeed?: boolean;
+  readonly recallWeights?: RecallWeightOverrides;
   readonly reviewQueueLimit?: number;
 }
 
@@ -209,38 +212,6 @@ function buildEntityLabel(
   return entity ? `${entity.name} (${entity.entity_id})` : entityId;
 }
 
-function sourceSystemWeight(sourceSystem: string | null | undefined): number {
-  switch (sourceSystem) {
-    case 'truth-kernel':
-      return 1.2;
-    case 'jarvis-brain-db':
-      return 0.95;
-    case 'jarvis-memory-db':
-      return 0.85;
-    case 'demo-source':
-      return 0.35;
-    default:
-      return sourceSystem ? 0.6 : 0.5;
-  }
-}
-
-function sourceKindWeight(sourceKind: string | null | undefined): number {
-  switch (sourceKind) {
-    case 'decision':
-      return 0.8;
-    case 'preference':
-      return 0.75;
-    case 'relationship':
-      return 0.7;
-    case 'memory':
-      return 0.65;
-    case 'database':
-      return 0.4;
-    default:
-      return sourceKind ? 0.5 : 0.3;
-  }
-}
-
 function relationshipTypeWeight(relationType: string): number {
   switch (relationType) {
     case 'has_active_task':
@@ -305,6 +276,8 @@ function rankEntities(
   entities: readonly TruthEntityRecord[],
   relationships: readonly GraphRelationshipRow[],
   projectEntityId: string,
+  strategy: ReturnType<typeof createRetrievalStrategy>,
+  focusTokens: readonly string[],
 ): readonly TruthEntityRecord[] {
   const connectionCounts = new Map<string, number>();
   for (const relationship of relationships) {
@@ -321,12 +294,21 @@ function rankEntities(
   return entities
     .map<ScoredValue<TruthEntityRecord>>((entity) => {
       const provenance = entityProvenance(store, entity);
-      const score =
-        entityCategoryWeight(entity, projectEntityId) +
-        sourceSystemWeight(provenance?.source_system) +
-        sourceKindWeight(provenance?.source_kind) +
-        (provenance?.confidence ?? 0.5) +
-        (connectionCounts.get(entity.entity_id) ?? 0) * 0.45;
+      const score = strategy.score(
+        {
+          id: entity.entity_id,
+          kind: 'session-entity',
+          title: entity.name,
+          excerpt: entity.summary,
+          sourceRef: provenance?.source_ref ?? `truth:${entity.entity_id}`,
+          sourceSystem: provenance?.source_system,
+          sourceKind: provenance?.source_kind,
+          confidence: provenance?.confidence,
+          baseline: entityCategoryWeight(entity, projectEntityId),
+          graphRelevance: (connectionCounts.get(entity.entity_id) ?? 0) * 0.45,
+        },
+        focusTokens,
+      ).total;
       return { value: entity, score };
     })
     .sort((left, right) => {
@@ -340,6 +322,8 @@ function rankDecisions(
   store: SqliteTruthKernelStorage,
   decisions: readonly TruthDecisionRecord[],
   entityScores: ReadonlyMap<string, number>,
+  strategy: ReturnType<typeof createRetrievalStrategy>,
+  focusTokens: readonly string[],
 ): readonly TruthDecisionRecord[] {
   return decisions
     .map<ScoredValue<TruthDecisionRecord>>((decision) => {
@@ -347,12 +331,21 @@ function rankDecisions(
       const scopeScore = decision.scope_entity_id ? entityScores.get(decision.scope_entity_id) ?? 0 : 0;
       return {
         value: decision,
-        score:
-          4 +
-          sourceSystemWeight(provenance?.source_system) +
-          sourceKindWeight(provenance?.source_kind) +
-          (provenance?.confidence ?? 0.5) +
-          scopeScore * 0.18,
+        score: strategy.score(
+          {
+            id: decision.decision_id,
+            kind: 'session-decision',
+            title: decision.title,
+            excerpt: decision.statement,
+            sourceRef: provenance?.source_ref ?? `truth:${decision.decision_id}`,
+            sourceSystem: provenance?.source_system,
+            sourceKind: provenance?.source_kind,
+            confidence: provenance?.confidence,
+            baseline: 4,
+            graphRelevance: scopeScore * 0.18,
+          },
+          focusTokens,
+        ).total,
       };
     })
     .sort((left, right) => {
@@ -366,6 +359,8 @@ function rankPreferences(
   store: SqliteTruthKernelStorage,
   preferences: readonly TruthPreferenceRecord[],
   entityScores: ReadonlyMap<string, number>,
+  strategy: ReturnType<typeof createRetrievalStrategy>,
+  focusTokens: readonly string[],
 ): readonly TruthPreferenceRecord[] {
   return preferences
     .map<ScoredValue<TruthPreferenceRecord>>((preference) => {
@@ -375,13 +370,21 @@ function rankPreferences(
         preference.strength === 'high' ? 1.1 : preference.strength === 'medium' ? 0.7 : 0.3;
       return {
         value: preference,
-        score:
-          3.6 +
-          strengthBoost +
-          sourceSystemWeight(provenance?.source_system) +
-          sourceKindWeight(provenance?.source_kind) +
-          (provenance?.confidence ?? 0.5) +
-          subjectScore * 0.16,
+        score: strategy.score(
+          {
+            id: preference.preference_id,
+            kind: 'session-preference',
+            title: preference.key,
+            excerpt: `${preference.key}=${preference.value} (${preference.strength})`,
+            sourceRef: provenance?.source_ref ?? `truth:${preference.preference_id}`,
+            sourceSystem: provenance?.source_system,
+            sourceKind: provenance?.source_kind,
+            confidence: provenance?.confidence,
+            baseline: 3.6 + strengthBoost,
+            graphRelevance: subjectScore * 0.16,
+          },
+          focusTokens,
+        ).total,
       };
     })
     .sort((left, right) => {
@@ -395,6 +398,8 @@ function rankPromotedMemories(
   store: SqliteTruthKernelStorage,
   memories: readonly TruthPromotedMemoryRecord[],
   entityScores: ReadonlyMap<string, number>,
+  strategy: ReturnType<typeof createRetrievalStrategy>,
+  focusTokens: readonly string[],
 ): readonly TruthPromotedMemoryRecord[] {
   return memories
     .map<ScoredValue<TruthPromotedMemoryRecord>>((memory) => {
@@ -402,12 +407,21 @@ function rankPromotedMemories(
       const subjectScore = memory.subject_entity_id ? entityScores.get(memory.subject_entity_id) ?? 0 : 0;
       return {
         value: memory,
-        score:
-          3.4 +
-          sourceSystemWeight(provenance?.source_system) +
-          sourceKindWeight(provenance?.source_kind) +
-          (provenance?.confidence ?? 0.5) +
-          subjectScore * 0.14,
+        score: strategy.score(
+          {
+            id: memory.memory_id,
+            kind: 'session-promoted-memory',
+            title: memory.summary,
+            excerpt: memory.content,
+            sourceRef: provenance?.source_ref ?? `truth:${memory.memory_id}`,
+            sourceSystem: provenance?.source_system,
+            sourceKind: provenance?.source_kind,
+            confidence: provenance?.confidence,
+            baseline: 3.4,
+            graphRelevance: subjectScore * 0.14,
+          },
+          focusTokens,
+        ).total,
       };
     })
     .sort((left, right) => {
