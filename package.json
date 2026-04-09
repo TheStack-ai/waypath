@@ -24,7 +24,7 @@
     "waypath": "dist/src/cli.js"
   },
   "keywords": [
-    "jarvis",
+    "waypath",
     "codex",
     "local-first",
     "sqlite",
