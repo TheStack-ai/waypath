@@ -301,9 +301,9 @@ function rankEntities(
           title: entity.name,
           excerpt: entity.summary,
           sourceRef: provenance?.source_ref ?? `truth:${entity.entity_id}`,
-          sourceSystem: provenance?.source_system,
-          sourceKind: provenance?.source_kind,
-          confidence: provenance?.confidence,
+          sourceSystem: provenance?.source_system ?? null,
+          sourceKind: provenance?.source_kind ?? null,
+          confidence: provenance?.confidence ?? null,
           baseline: entityCategoryWeight(entity, projectEntityId),
           graphRelevance: (connectionCounts.get(entity.entity_id) ?? 0) * 0.45,
         },
@@ -338,9 +338,9 @@ function rankDecisions(
             title: decision.title,
             excerpt: decision.statement,
             sourceRef: provenance?.source_ref ?? `truth:${decision.decision_id}`,
-            sourceSystem: provenance?.source_system,
-            sourceKind: provenance?.source_kind,
-            confidence: provenance?.confidence,
+            sourceSystem: provenance?.source_system ?? null,
+            sourceKind: provenance?.source_kind ?? null,
+            confidence: provenance?.confidence ?? null,
             baseline: 4,
             graphRelevance: scopeScore * 0.18,
           },
@@ -377,9 +377,9 @@ function rankPreferences(
             title: preference.key,
             excerpt: `${preference.key}=${preference.value} (${preference.strength})`,
             sourceRef: provenance?.source_ref ?? `truth:${preference.preference_id}`,
-            sourceSystem: provenance?.source_system,
-            sourceKind: provenance?.source_kind,
-            confidence: provenance?.confidence,
+            sourceSystem: provenance?.source_system ?? null,
+            sourceKind: provenance?.source_kind ?? null,
+            confidence: provenance?.confidence ?? null,
             baseline: 3.6 + strengthBoost,
             graphRelevance: subjectScore * 0.16,
           },
@@ -414,9 +414,9 @@ function rankPromotedMemories(
             title: memory.summary,
             excerpt: memory.content,
             sourceRef: provenance?.source_ref ?? `truth:${memory.memory_id}`,
-            sourceSystem: provenance?.source_system,
-            sourceKind: provenance?.source_kind,
-            confidence: provenance?.confidence,
+            sourceSystem: provenance?.source_system ?? null,
+            sourceKind: provenance?.source_kind ?? null,
+            confidence: provenance?.confidence ?? null,
             baseline: 3.4,
             graphRelevance: subjectScore * 0.14,
           },
@@ -572,10 +572,16 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
       const projectEntityId = `project:${project}`;
       const seedEntities = normalizeList(input.seedEntities);
       const focusTokens = buildFocusTokens(project, objective, activeTask);
-      const retrievalStrategy = createRetrievalStrategy({
-        profile: 'session-runtime',
-        weights: options.recallWeights,
-      });
+      const retrievalStrategy = createRetrievalStrategy(
+        options.recallWeights
+          ? {
+              profile: 'session-runtime',
+              weights: options.recallWeights,
+            }
+          : {
+              profile: 'session-runtime',
+            },
+      );
 
       if (options.autoSeed ?? true) {
         ensureTruthKernelSeedData(store, { project, objective, activeTask });

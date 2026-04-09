@@ -111,10 +111,10 @@ const PROFILE_DEFAULTS: Readonly<Record<RetrievalStrategyProfile, RetrievalProfi
 
 function tokenizeQuery(query: string | readonly string[] | undefined): string[] {
   if (!query) return [];
-  const tokens = Array.isArray(query) ? query : query.split(/\s+/u);
+  const tokens = typeof query === 'string' ? query.split(/\s+/u) : [...query];
   return tokens
-    .map((token) => token.trim().toLowerCase())
-    .filter((token) => token.length > 0);
+    .map((token: string) => token.trim().toLowerCase())
+    .filter((token: string) => token.length > 0);
 }
 
 function resolveSourceSystemWeight(

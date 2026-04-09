@@ -262,10 +262,16 @@ export function buildLocalArchiveBundle(
 ): EvidenceBundle {
   const normalizedQuery = query.trim();
   const tokens = tokenize(normalizedQuery);
-  const strategy = createRetrievalStrategy({
-    profile: 'archive-recall',
-    weights: options.weights,
-  });
+  const strategy = createRetrievalStrategy(
+    options.weights
+      ? {
+          profile: 'archive-recall',
+          weights: options.weights,
+        }
+      : {
+          profile: 'archive-recall',
+        },
+  );
   const evidenceItems = store ? collectStoreEvidence(store) : [];
 
   if (!store) {
