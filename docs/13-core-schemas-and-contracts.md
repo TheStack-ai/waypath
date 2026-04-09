@@ -237,7 +237,7 @@ v1에서 우선 지원하면 좋은 relation types:
   "current_focus": {
     "project": "...",
     "objective": "...",
-    "active_task": "..."
+    "activeTask": "..."
   },
   "truth_highlights": {
     "decisions": [],
@@ -253,7 +253,9 @@ v1에서 우선 지원하면 좋은 relation types:
   "recent_changes": {
     "recent_promotions": [],
     "superseded": [],
-    "open_contradictions": []
+    "open_contradictions": [],
+    "review_queue": [],
+    "stale_items": []
   },
   "evidence_appendix": {
     "enabled": true,
@@ -262,6 +264,11 @@ v1에서 우선 지원하면 좋은 relation types:
   "related_pages": []
 }
 ```
+
+> Compatibility note: Phase 3 domain-model hardening may introduce richer internal typed objects,
+> but the v1 CLI / host-facing JSON contract stays non-breaking. In particular,
+> `current_focus.activeTask`, `recent_changes.review_queue`, and `recent_changes.stale_items`
+> remain part of the public result shape until a deliberate major-version contract change.
 
 ## 3.2 Required behavior
 
