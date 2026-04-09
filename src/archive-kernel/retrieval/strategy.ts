@@ -4,11 +4,11 @@ export interface RetrievalCandidate {
   readonly title?: string;
   readonly excerpt?: string;
   readonly sourceRef?: string;
-  readonly provenanceConfidence?: number | null;
-  readonly sourceSystem?: string | null;
-  readonly sourceKind?: string | null;
-  readonly graphRelevance?: number | null;
-  readonly baseScore?: number | null;
+  readonly provenanceConfidence?: number | null | undefined;
+  readonly sourceSystem?: string | null | undefined;
+  readonly sourceKind?: string | null | undefined;
+  readonly graphRelevance?: number | null | undefined;
+  readonly baseScore?: number | null | undefined;
 }
 
 export interface RetrievalScoreBreakdown {
@@ -34,7 +34,8 @@ export type RetrievalVectorHook<TCandidate extends RetrievalCandidate = Retrieva
 
 export interface RetrievalStrategyOptions<TCandidate extends RetrievalCandidate = RetrievalCandidate> {
   readonly query?: string;
-  readonly weights?: RecallWeightOverrides;
+  readonly weights?: RecallWeightOverrides | undefined;
+  readonly profile?: RetrievalWeightProfile | undefined;
   readonly vectorHook?: RetrievalVectorHook<TCandidate>;
 }
 
@@ -43,6 +44,30 @@ export interface RetrievalStrategy<TCandidate extends RetrievalCandidate = Retri
   readonly tokens: readonly string[];
   score(candidate: TCandidate): RetrievalScoreBreakdown;
 }
+
+export interface RetrievalWeightProfile {
+  readonly sourceSystems?: Readonly<Record<string, number>>;
+  readonly sourceKinds?: Readonly<Record<string, number>>;
+  readonly missingSourceSystemWeight?: number;
+  readonly unknownSourceSystemWeight?: number;
+  readonly missingSourceKindWeight?: number;
+  readonly unknownSourceKindWeight?: number;
+}
+
+const DEFAULT_SOURCE_SYSTEM_WEIGHTS: Readonly<Record<string, number>> = {
+  'truth-kernel': 1.1,
+  'jarvis-brain-db': 0.95,
+  'jarvis-memory-db': 0.85,
+  'demo-source': 0.3,
+};
+
+const DEFAULT_SOURCE_KIND_WEIGHTS: Readonly<Record<string, number>> = {
+  decision: 0.8,
+  preference: 0.75,
+  relationship: 0.65,
+  memory: 0.6,
+  database: 0.35,
+};
 
 function tokenize(query: string): string[] {
   return query
@@ -59,45 +84,35 @@ function finiteOrZero(value: number | null | undefined): number {
 function sourceSystemWeight(
   sourceSystem: string | null | undefined,
   weights: RecallWeightOverrides | undefined,
+  profile: RetrievalWeightProfile | undefined,
 ): number {
   const configured = sourceSystem ? weights?.sourceSystems?.[sourceSystem] : undefined;
   if (configured !== undefined) return configured;
+  const profiled = sourceSystem ? profile?.sourceSystems?.[sourceSystem] : undefined;
+  if (profiled !== undefined) return profiled;
+  const builtin = sourceSystem ? DEFAULT_SOURCE_SYSTEM_WEIGHTS[sourceSystem] : undefined;
+  if (builtin !== undefined) return builtin;
 
-  switch (sourceSystem) {
-    case 'truth-kernel':
-      return 1.1;
-    case 'jarvis-brain-db':
-      return 0.95;
-    case 'jarvis-memory-db':
-      return 0.85;
-    case 'demo-source':
-      return 0.3;
-    default:
-      return sourceSystem ? 0.5 : 0.4;
-  }
+  return sourceSystem
+    ? profile?.unknownSourceSystemWeight ?? 0.5
+    : profile?.missingSourceSystemWeight ?? 0.4;
 }
 
 function sourceKindWeight(
   sourceKind: string | null | undefined,
   weights: RecallWeightOverrides | undefined,
+  profile: RetrievalWeightProfile | undefined,
 ): number {
   const configured = sourceKind ? weights?.sourceKinds?.[sourceKind] : undefined;
   if (configured !== undefined) return configured;
+  const profiled = sourceKind ? profile?.sourceKinds?.[sourceKind] : undefined;
+  if (profiled !== undefined) return profiled;
+  const builtin = sourceKind ? DEFAULT_SOURCE_KIND_WEIGHTS[sourceKind] : undefined;
+  if (builtin !== undefined) return builtin;
 
-  switch (sourceKind) {
-    case 'decision':
-      return 0.8;
-    case 'preference':
-      return 0.75;
-    case 'relationship':
-      return 0.65;
-    case 'memory':
-      return 0.6;
-    case 'database':
-      return 0.35;
-    default:
-      return sourceKind ? 0.45 : 0.25;
-  }
+  return sourceKind
+    ? profile?.unknownSourceKindWeight ?? 0.45
+    : profile?.missingSourceKindWeight ?? 0.25;
 }
 
 function lexicalScore(candidate: RetrievalCandidate, tokens: readonly string[]): number {
@@ -130,8 +145,8 @@ export function createRetrievalStrategy<TCandidate extends RetrievalCandidate = 
     score(candidate: TCandidate): RetrievalScoreBreakdown {
       const lexical = lexicalScore(candidate, tokens);
       const provenance = finiteOrZero(candidate.provenanceConfidence);
-      const sourceSystem = sourceSystemWeight(candidate.sourceSystem, options.weights);
-      const sourceKind = sourceKindWeight(candidate.sourceKind, options.weights);
+      const sourceSystem = sourceSystemWeight(candidate.sourceSystem, options.weights, options.profile);
+      const sourceKind = sourceKindWeight(candidate.sourceKind, options.weights, options.profile);
       const graphRelevance = finiteOrZero(candidate.graphRelevance);
       const base = finiteOrZero(candidate.baseScore);
       const vector = finiteOrZero(options.vectorHook?.({ query, tokens, candidate }));

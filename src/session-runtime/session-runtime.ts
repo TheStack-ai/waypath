@@ -269,7 +269,27 @@ function entityCategoryWeight(entity: TruthEntityRecord, projectEntityId: string
   }
 }
 
-const runtimeRetrievalStrategy = createRetrievalStrategy();
+const runtimeRetrievalStrategy = createRetrievalStrategy({
+  profile: {
+    sourceSystems: {
+      'truth-kernel': 1.2,
+      'jarvis-brain-db': 0.95,
+      'jarvis-memory-db': 0.85,
+      'demo-source': 0.35,
+    },
+    sourceKinds: {
+      decision: 0.8,
+      preference: 0.75,
+      relationship: 0.7,
+      memory: 0.65,
+      database: 0.4,
+    },
+    missingSourceSystemWeight: 0.5,
+    unknownSourceSystemWeight: 0.6,
+    missingSourceKindWeight: 0.3,
+    unknownSourceKindWeight: 0.5,
+  },
+});
 
 function rankEntities(
   store: SqliteTruthKernelStorage,
