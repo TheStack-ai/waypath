@@ -198,6 +198,68 @@ v1 MVP가 의미하는 것은 다음입니다.
 
 ---
 
+## Post-v1 Maturity Backlog (Honcho review 적용)
+
+이 섹션은 **전략팀 + AI 엔지니어팀이 Honcho 레포를 읽고 난 뒤, Waypath에 실제로 반영할 가치가 있다고 합의한 다음 단계**를 정리한다.
+
+핵심 원칙:
+- Honcho의 **server / Postgres / managed-service 구조는 따라가지 않는다**
+- 대신 Honcho의 **성숙한 도메인 모델링, 검색 전략 분리, 설정 계층**만 선택적으로 흡수한다
+- Waypath의 정체성은 계속 **terminal-installable local-first CLI**로 유지한다
+
+### Workstream 11 — Config / Runtime Maturity
+
+#### Tasks
+- [ ] `config.toml` 기반 설정 파일 추가
+- [ ] env override 우선순위 규칙 정의
+- [ ] source adapter on/off, recall weighting, import policy 등의 runtime knob 정리
+- [ ] local dev / CI / release 환경별 설정 정책 분리
+
+#### Acceptance criteria
+- CLI 실행 동작이 코드 수정 없이 설정으로 조정 가능하다
+- source adapter / recall / review queue 관련 동작을 설정으로 제어할 수 있다
+- 설정 우선순위가 README와 코드에서 일치한다
+
+### Workstream 12 — Retrieval Strategy Layer
+
+#### Tasks
+- [ ] recall scoring을 별도 retrieval strategy 레이어로 분리
+- [ ] lexical / provenance / source-weight / graph-relevance scoring 분리
+- [ ] future vector hook을 위한 interface만 먼저 정의
+- [ ] ranking regression test 추가
+
+#### Acceptance criteria
+- archive / recall 품질 로직이 façade나 session-runtime에 흩어지지 않는다
+- ranking 이유를 코드/테스트에서 설명 가능하다
+- future vector backend를 붙여도 current local-first 흐름이 깨지지 않는다
+
+### Workstream 13 — Domain Model Hardening
+
+#### Tasks
+- [ ] `session`을 1급 object로 승격할지 결정하고 contract 정리
+- [ ] `source` / `source anchor` / `import run` object 정의
+- [ ] `review queue item`, `stale item`, `contradiction item`을 명시적 object로 정리
+- [ ] inspect/review-queue surface와 truth storage 간 mapping 정식화
+
+#### Acceptance criteria
+- session / source / review / contradiction 관련 흐름이 ad-hoc 문자열 조합에 덜 의존한다
+- inspect / queue / page / session-start가 같은 object model 위에서 설명된다
+- source import / review queue / stale surfacing이 더 예측 가능해진다
+
+### Workstream 14 — Verification Hardening
+
+#### Tasks
+- [ ] config layer edge-case tests 추가
+- [ ] source import normalization edge-case tests 추가
+- [ ] contradiction / stale / review queue regression tests 추가
+- [ ] install smoke matrix 정리
+
+#### Acceptance criteria
+- 새로운 기능보다 regression-proofing이 더 강해진다
+- Waypath가 “잘 돌아가는 CLI”를 넘어 “안정적으로 유지되는 시스템”으로 올라간다
+
+---
+
 ## Verification Checklist
 
 ### Unit-level

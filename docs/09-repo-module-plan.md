@@ -118,6 +118,23 @@ waypath/
 - config loading
 - reusable utilities
 
+### `src/shared/config/` (next iteration)
+- `config.toml` parsing
+- env override resolution
+- runtime knobs for source adapters / recall weighting / import policy
+
+### `src/archive-kernel/retrieval/` (next iteration)
+- retrieval strategy layer
+- lexical / provenance / source-weight / graph-relevance scoring
+- future vector hook boundary
+
+### `src/contracts/domain/` 또는 equivalent typed layer (next iteration)
+- session object
+- source anchor / import run object
+- review queue item
+- stale item / contradiction item
+- façade/operator surfaces와 truth storage 간 shared typed model
+
 ---
 
 ## Storage / Ownership Plan
@@ -199,6 +216,13 @@ source systems는 reference source이며 write target이 아니다.
 8. `knowledge-pages/`
 9. `host-shims/claude-code/` parity
 10. operator/integration tests
+
+## Next Maturity Sequence (Honcho review 기반)
+
+1. `shared/config/`
+2. `archive-kernel/retrieval/`
+3. domain model hardening for `session/source/review/stale/conflict`
+4. operator regression / install smoke hardening
 
 ---
 
