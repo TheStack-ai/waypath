@@ -1,10 +1,24 @@
 export type HostName = 'codex';
 export type ImportMode = 'bootstrap' | 'manual' | 'reimport';
 
+export interface SessionIdentity {
+  session_id: string;
+  host: HostName;
+  project: string;
+  objective: string;
+  active_task: string;
+}
+
 export interface SessionFocus {
   project: string;
   objective: string;
   activeTask: string;
+}
+
+export interface SourceAnchor {
+  source_system: string;
+  source_kind: string;
+  source_ref: string;
 }
 
 export interface TruthHighlights {
@@ -20,12 +34,25 @@ export interface GraphContext {
   relationships: string[];
 }
 
+export interface ContradictionItem {
+  contradiction_id: string;
+  kind: 'preference_conflict';
+  scope_ref: string;
+  key: string;
+  values: string[];
+  summary: string;
+  updated_at: string;
+}
+
 export interface RecentChanges {
   recent_promotions: string[];
   superseded: string[];
   open_contradictions: string[];
   review_queue: string[];
   stale_items: string[];
+  contradiction_items: ContradictionItem[];
+  review_queue_items: ReviewQueueItem[];
+  stale_item_details: StaleItem[];
 }
 
 export interface EvidenceItem {
@@ -57,6 +84,15 @@ export interface PageReference {
   status: 'draft' | 'canonical' | 'stale';
 }
 
+export interface StaleItem {
+  page_id: string;
+  page_type: PageReference['page_type'];
+  title: string;
+  status: 'stale';
+  updated_at: string;
+  summary: string;
+}
+
 export interface StoredKnowledgePage {
   page: PageReference;
   summary_markdown: string;
@@ -74,6 +110,14 @@ export interface PromotionCandidateView {
   created_at: string;
 }
 
+export interface ReviewQueueItem {
+  candidate_id: string;
+  status: 'pending_review' | 'needs_more_evidence';
+  subject: string;
+  summary: string;
+  created_at: string;
+}
+
 export interface ImportCounts {
   provenance: number;
   entities: number;
@@ -84,6 +128,14 @@ export interface ImportCounts {
   promoted_candidates: number;
 }
 
+export interface ImportRun {
+  manifest_id: string;
+  mode: ImportMode;
+  imported_at: string;
+  reader_names: string[];
+  source_anchors: SourceAnchor[];
+}
+
 export interface ImportResult {
   operation: 'import';
   status: 'imported';
@@ -91,6 +143,7 @@ export interface ImportResult {
   manifest_id: string;
   readers: string[];
   imported_at: string;
+  run: ImportRun;
   store_path: string;
   counts: ImportCounts;
   message: string;
@@ -111,6 +164,7 @@ export interface LocalSourceStatusItem {
   enabled: boolean;
   path: string | null;
   adapter_status: 'ready' | 'probe_only' | 'missing';
+  source_anchor?: SourceAnchor | null;
 }
 
 export interface LocalSourceStatusResult {
@@ -120,6 +174,7 @@ export interface LocalSourceStatusResult {
 }
 
 export interface SessionContextPack {
+  session: SessionIdentity;
   current_focus: SessionFocus;
   truth_highlights: TruthHighlights;
   graph_context: GraphContext;
@@ -198,6 +253,9 @@ export interface ReviewQueueResult {
   pending_review: PromotionCandidateView[];
   stale_pages: PageReference[];
   open_contradictions: string[];
+  review_queue_items: ReviewQueueItem[];
+  stale_items: StaleItem[];
+  contradiction_items: ContradictionItem[];
 }
 
 export interface InspectPageResult {

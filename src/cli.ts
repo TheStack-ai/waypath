@@ -156,12 +156,20 @@ export function runCli(argv: string[], io: CliIo): number {
   }
 
   if (parsed.command === 'source-status') {
+    const sources = probeLocalSourceAdapters(
+      runtimeConfig.sourceAdapters?.enabled ? { enabled: runtimeConfig.sourceAdapters.enabled } : undefined,
+    ).map((source) => ({
+      ...source,
+      source_anchor: {
+        source_system: source.reader,
+        source_kind: source.adapter_status === 'probe_only' ? 'probe' : 'local_adapter',
+        source_ref: source.path ?? `${source.reader}:unavailable`,
+      },
+    }));
     const result = {
       operation: 'source-status' as const,
       status: 'ready' as const,
-      sources: probeLocalSourceAdapters(
-        runtimeConfig.sourceAdapters?.enabled ? { enabled: runtimeConfig.sourceAdapters.enabled } : undefined,
-      ),
+      sources,
     };
     if (parsed.json) {
       writeLine(io, JSON.stringify(result, null, 2));

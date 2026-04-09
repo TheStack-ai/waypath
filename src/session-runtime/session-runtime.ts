@@ -1,10 +1,12 @@
 import {
+  type ContradictionItem,
   type RecallWeightOverrides,
+  type ReviewQueueItem,
   type SessionContextPack,
   type SessionRuntime,
   type SessionStartInput,
+  type StaleItem,
 } from '../contracts';
-import { createRetrievalStrategy } from '../archive-kernel/index.js';
 import {
   createTruthKernelStorage,
   defaultTruthKernelStoreLocation,
@@ -422,17 +424,65 @@ function rankPromotedMemories(
     .map((entry) => entry.value);
 }
 
-function buildReviewQueue(store: SqliteTruthKernelStorage, limit: number): string[] {
+function buildReviewQueue(store: SqliteTruthKernelStorage, limit: number): ReviewQueueItem[] {
   return store
     .listPromotionCandidates(limit)
-    .filter((candidate) => candidate.status === 'pending_review' || candidate.status === 'needs_more_evidence')
-    .map((candidate) => `${candidate.candidate_id}: ${candidate.summary}`);
+    .filter(
+      (
+        candidate,
+      ): candidate is {
+        candidate_id: string;
+        subject: string;
+        status: 'pending_review' | 'needs_more_evidence';
+        summary: string;
+        created_at: string;
+      } => candidate.status === 'pending_review' || candidate.status === 'needs_more_evidence',
+    )
+    .map((candidate) => ({
+      candidate_id: candidate.candidate_id,
+      status: candidate.status,
+      subject: candidate.subject,
+      summary: candidate.summary,
+      created_at: candidate.created_at,
+    }));
 }
 
-function buildStaleItems(store: SqliteTruthKernelStorage, limit: number): string[] {
+function buildStaleItems(store: SqliteTruthKernelStorage, limit: number): StaleItem[] {
   return store
     .listKnowledgePages(limit, 'stale')
-    .map((page) => `${page.page.page_id}: ${page.page.title}`);
+    .map((page) => ({
+      page_id: page.page.page_id,
+      page_type: page.page.page_type,
+      title: page.page.title,
+      status: 'stale',
+      updated_at: page.updated_at,
+      summary: `${page.page.page_id}: ${page.page.title}`,
+    }));
+}
+
+function buildContradictionItems(
+  store: SqliteTruthKernelStorage,
+  limit: number,
+  projectEntityId: string,
+): ContradictionItem[] {
+  return store.listOpenPreferenceContradictions(limit, projectEntityId).map((summary, index) => {
+    const match = /^Preference conflict on (.*?): ([^:]+) -> (.+)$/u.exec(summary);
+    const scope_ref = match?.[1] ?? 'workspace';
+    const key = match?.[2] ?? `conflict_${index + 1}`;
+    const values = (match?.[3] ?? '')
+      .split(' | ')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+    return {
+      contradiction_id: `contradiction:${scope_ref}:${key}:${index + 1}`,
+      kind: 'preference_conflict',
+      scope_ref,
+      key,
+      values,
+      summary,
+      updated_at: new Date().toISOString(),
+    };
+  });
 }
 
 function formatGraphRelationships(
@@ -455,18 +505,11 @@ function formatGraphRelationships(
         (entityScores.get(relationship.to_entity_id) ?? 0);
       return {
         value: summary,
-        score: strategy.score(
-          {
-            id: relationship.relationship_id,
-            kind: 'session-relationship',
-            title: summary,
-            baseline: relationshipTypeWeight(relationship.relation_type),
-            graphRelevance: (relationship.weight ?? 0) + endpointScore * 0.08,
-            enableSourceWeight: false,
-            enableProvenance: false,
-          },
-          focusTokens,
-        ).total,
+        score: strategy.score({
+          title: summary,
+          baseScore: relationshipTypeWeight(relationship.relation_type),
+          graphRelevance: (relationship.weight ?? 0) + endpointScore * 0.08,
+        }).total,
       };
     }),
     ...decisions
@@ -564,14 +607,10 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
       const seedEntities = normalizeList(input.seedEntities);
       const focusTokens = buildFocusTokens(project, objective, activeTask);
       const retrievalStrategy = createRetrievalStrategy(
-        options.recallWeights
-          ? {
-              profile: 'session-runtime',
-              weights: options.recallWeights,
-            }
-          : {
-              profile: 'session-runtime',
-            },
+        {
+          query: focusTokens.join(' '),
+          ...(options.recallWeights ? { weights: options.recallWeights } : {}),
+        },
       );
 
       if (options.autoSeed ?? true) {
@@ -624,6 +663,13 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
       );
 
       return {
+        session: {
+          session_id: `${project}:${activeTask}`,
+          host: 'codex',
+          project,
+          objective,
+          active_task: activeTask,
+        },
         current_focus: {
           project,
           objective,
@@ -649,8 +695,11 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
             .filter((decision) => decision.superseded_by !== null)
             .map((decision) => decision.decision_id),
           open_contradictions: [...store.listOpenPreferenceContradictions(reviewQueueLimit, projectEntityId)],
-          review_queue: buildReviewQueue(store, reviewQueueLimit),
-          stale_items: buildStaleItems(store, reviewQueueLimit),
+          review_queue: buildReviewQueue(store, reviewQueueLimit).map((item) => `${item.candidate_id}: ${item.summary}`),
+          stale_items: buildStaleItems(store, reviewQueueLimit).map((item) => item.summary),
+          contradiction_items: buildContradictionItems(store, reviewQueueLimit, projectEntityId),
+          review_queue_items: buildReviewQueue(store, reviewQueueLimit),
+          stale_item_details: buildStaleItems(store, reviewQueueLimit),
         },
         evidence_appendix: {
           enabled: false,

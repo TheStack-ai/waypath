@@ -1,3 +1,11 @@
+import type {
+  ContradictionItem,
+  ReviewQueueItem,
+  SessionIdentity,
+  SourceAnchor,
+  StaleItem,
+} from '../contracts/index.js';
+
 export type ISODateTimeString = string;
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
@@ -44,11 +52,8 @@ export type KnowledgePageType =
 
 export type PromotionAction = 'create' | 'update' | 'supersede';
 
-export interface ProvenanceRecord {
+export interface ProvenanceRecord extends SourceAnchor {
   readonly provenance_id: string;
-  readonly source_system: string;
-  readonly source_kind: string;
-  readonly source_ref: string;
   readonly observed_at: ISODateTimeString | null;
   readonly imported_at: ISODateTimeString | null;
   readonly promoted_at: ISODateTimeString | null;
@@ -183,10 +188,7 @@ export interface ArchiveSearchFilters {
   readonly minConfidence?: number;
 }
 
-export interface ArchivePointerMeta {
-  readonly source_system: string;
-  readonly source_kind: string;
-  readonly source_ref: string;
+export interface ArchivePointerMeta extends SourceAnchor {
   readonly notes?: string;
 }
 
@@ -233,6 +235,11 @@ export interface RecentChanges {
   readonly recent_promotions: readonly string[];
   readonly superseded: readonly string[];
   readonly open_contradictions: readonly string[];
+  readonly review_queue: readonly string[];
+  readonly stale_items: readonly string[];
+  readonly contradiction_items: readonly ContradictionItem[];
+  readonly review_queue_items: readonly ReviewQueueItem[];
+  readonly stale_item_details: readonly StaleItem[];
 }
 
 export interface EvidenceAppendix {
@@ -248,6 +255,7 @@ export interface PageReference {
 }
 
 export interface SessionContextPack {
+  readonly session: SessionIdentity;
   readonly current_focus: SessionCurrentFocus;
   readonly truth_highlights: TruthHighlights;
   readonly graph_context: GraphContext;

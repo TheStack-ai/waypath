@@ -35,6 +35,13 @@ export function createCodexHostShim(options: CodexHostShimOptions = {}) {
           session: {
             ...session,
             session_id: input.sessionId ?? session.session_id,
+            context_pack: {
+              ...session.context_pack,
+              session: {
+                ...session.context_pack.session,
+                session_id: input.sessionId ?? session.session_id,
+              },
+            },
           },
           store_path: storePath,
         };
