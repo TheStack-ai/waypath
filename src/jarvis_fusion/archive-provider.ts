@@ -53,14 +53,6 @@ function slugify(value: string): string {
   return value.replace(/\s+/g, '-').toLowerCase() || 'empty';
 }
 
-function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .split(/\s+/)
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0);
-}
-
 function metadataStringValue(metadata: Record<string, unknown>, key: string): string | null {
   const value = metadata[key];
   return typeof value === 'string' ? value : null;
