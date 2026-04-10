@@ -39,7 +39,7 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
   const runtime = options.runtime ?? createSessionRuntime({ ...options, store });
   const description: FacadeDescription = {
     name: 'waypath-facade',
-    host_shims: ['codex'],
+    host_shims: ['codex', 'claude-code'],
     verbs: ['session-start', 'recall', 'page', 'promote', 'review', 'review-queue', 'inspect-page', 'inspect-candidate', 'graph-query', 'resolve-contradiction', 'refresh-page'],
     access_layer: 'operator-facing',
     session_runtime: 'local-first',

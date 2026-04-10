@@ -28,6 +28,14 @@ function captureIo(): CapturedIo {
 }
 
 export function runCodexCliIntegrationTest(): void {
+  runBootstrapCliIntegrationTest('codex', 'codex');
+}
+
+export function runClaudeCodeCliIntegrationTest(): void {
+  runBootstrapCliIntegrationTest('claude-code', 'claude-code');
+}
+
+function runBootstrapCliIntegrationTest(command: 'codex' | 'claude-code', expectedHost: 'codex' | 'claude-code'): void {
   const root = mkdtempSync(`${tmpdir()}/waypath-cli-`);
   const storePath = `${root}/truth.db`;
   const importCapture = captureIo();
@@ -37,7 +45,7 @@ export function runCodexCliIntegrationTest(): void {
   );
   assertEqual(importExitCode, 0);
   const captured = captureIo();
-  const exitCode = runCli(['codex', '--json', '--project', 'cli-project', '--objective', 'bootstrap', '--task', 'smoke', '--store-path', storePath], captured.io);
+  const exitCode = runCli([command, '--json', '--project', 'cli-project', '--objective', 'bootstrap', '--task', 'smoke', '--store-path', storePath], captured.io);
   assertEqual(exitCode, 0);
   assertEqual(captured.stderr.join(''), '');
   assert(captured.stdout.length > 0, 'expected JSON output');
@@ -52,7 +60,7 @@ export function runCodexCliIntegrationTest(): void {
       };
     };
   };
-  assertEqual(result.host, 'codex');
+  assertEqual(result.host, expectedHost);
   assertEqual(result.status, 'bootstrapped');
   assertEqual(result.session_id, 'cli-project:smoke');
   assertEqual(result.store_path, storePath);

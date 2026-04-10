@@ -1,9 +1,11 @@
 import { runFacadeUnitTest } from './unit/facade.test';
 import { runPageServiceUnitTest } from './unit/page-service.test';
 import { runSessionRuntimeUnitTest } from './unit/session-runtime.test';
+import { runSourceReadersLocalUnitTest } from './unit/source-readers-local.test';
 import { runTruthKernelUnitTest } from './unit/truth-kernel.test';
 import { runSourceReaderBootstrapUnitTest } from './unit/source-reader-bootstrap.test';
 import { runArchiveProviderUnitTest } from './unit/archive-provider.test';
+import { runMemPalaceProviderUnitTest } from './unit/mempalace-provider.test';
 import { runRetrievalStrategyUnitTest } from './unit/retrieval-strategy.test';
 import { runRuntimeConfigUnitTest } from './unit/runtime-config.test';
 import {
@@ -68,6 +70,7 @@ import {
   testMaxResultsLimit,
 } from './unit/ontology-support.test';
 import {
+  runClaudeCodeCliIntegrationTest,
   runCodexCliIntegrationTest,
   runPageCliIntegrationTest,
   runPromoteCliIntegrationTest,
@@ -91,12 +94,15 @@ const tests: TestCase[] = [
   { name: 'facade unit', run: runFacadeUnitTest },
   { name: 'page service unit', run: runPageServiceUnitTest },
   { name: 'session runtime unit', run: runSessionRuntimeUnitTest },
+  { name: 'source-readers-local unit', run: runSourceReadersLocalUnitTest },
   { name: 'truth-kernel unit', run: runTruthKernelUnitTest },
   { name: 'source-reader bootstrap unit', run: runSourceReaderBootstrapUnitTest },
   { name: 'archive provider unit', run: runArchiveProviderUnitTest },
+  { name: 'mempalace provider unit', run: runMemPalaceProviderUnitTest },
   { name: 'retrieval strategy unit', run: runRetrievalStrategyUnitTest },
   { name: 'runtime config unit', run: runRuntimeConfigUnitTest },
   { name: 'codex cli integration', run: runCodexCliIntegrationTest },
+  { name: 'claude-code cli integration', run: runClaudeCodeCliIntegrationTest },
   { name: 'recall cli integration', run: runRecallCliIntegrationTest },
   { name: 'page cli integration', run: runPageCliIntegrationTest },
   { name: 'promote cli integration', run: runPromoteCliIntegrationTest },

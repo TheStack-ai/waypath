@@ -74,6 +74,7 @@ export function formatUsage(): string {
     '',
     'Usage:',
     '  waypath codex [--json] [--project <name>] [--objective <text>] [--task <text>] [--session-id <id>] [--store-path <path>]',
+    '  waypath claude-code [--json] [--project <name>] [--objective <text>] [--task <text>] [--session-id <id>] [--store-path <path>]',
     '  waypath recall --query <text> [--json]',
     '  waypath page --subject <text> [--json]',
     '  waypath promote --subject <text> [--json]',

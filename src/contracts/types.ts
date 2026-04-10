@@ -1,4 +1,4 @@
-export type HostName = 'codex';
+export type HostName = 'codex' | 'claude-code';
 export type ImportMode = 'bootstrap' | 'manual' | 'reimport';
 
 export interface SessionIdentity {
@@ -387,11 +387,28 @@ export interface CodexBootstrapInput extends SessionStartInput {
   storePath?: string | undefined;
 }
 
+export interface ClaudeCodeBootstrapInput extends SessionStartInput {
+  sessionId?: string | undefined;
+  command?: string | undefined;
+  storePath?: string | undefined;
+}
+
 export interface CodexBootstrapResult {
   host: 'codex';
   status: 'bootstrapped';
   entry_point: 'src/host-shims/codex';
   command: 'codex';
+  session_id: string;
+  facade: ReturnType<FacadeApi['describe']>;
+  session: SessionStartResult;
+  store_path: string;
+}
+
+export interface ClaudeCodeBootstrapResult {
+  host: 'claude-code';
+  status: 'bootstrapped';
+  entry_point: 'src/host-shims/claude-code';
+  command: 'claude-code';
   session_id: string;
   facade: ReturnType<FacadeApi['describe']>;
   session: SessionStartResult;

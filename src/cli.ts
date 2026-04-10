@@ -4,7 +4,7 @@ import { createLocalImportManifest, runBootstrapImport, toImportResult } from '.
 import { probeLocalSourceAdapters } from './jarvis_fusion/source-readers-local.js';
 import { createTruthKernelStorage, defaultTruthKernelStoreLocation } from './jarvis_fusion/truth-kernel/index.js';
 import { createFacade } from './facade';
-import { createCodexHostShim } from './host-shims';
+import { createClaudeCodeHostShim, createCodexHostShim } from './host-shims';
 import { loadRuntimeConfig } from './shared/config';
 import { createCliArgs, formatUsage, writeLine, type CliIo } from './shared/cli';
 
@@ -31,10 +31,12 @@ export function runCli(argv: string[], io: CliIo): number {
     ...(runtimeConfig.reviewQueue?.limit ? { reviewQueueLimit: runtimeConfig.reviewQueue.limit } : {}),
   };
 
-  if (parsed.command === 'codex') {
+  if (parsed.command === 'codex' || parsed.command === 'claude-code') {
     const facade = createFacade(facadeOptions);
     try {
-      const shim = createCodexHostShim({ facade });
+      const shim = parsed.command === 'codex'
+        ? createCodexHostShim({ facade })
+        : createClaudeCodeHostShim({ facade });
       const result = shim.bootstrap({
         project: parsed.project,
         objective: parsed.objective,

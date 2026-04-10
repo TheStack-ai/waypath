@@ -1,3 +1,4 @@
+export * from './adapters';
 export * from './cli';
 export * from './contracts';
 export * from './facade';

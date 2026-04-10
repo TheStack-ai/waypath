@@ -20,6 +20,7 @@ import type {
 const DEFAULT_JARVIS_DB_PATH = join(homedir(), '.claude', 'jarvis', 'data', 'jarvis.db');
 const DEFAULT_JARVIS_BRAIN_DB_PATH = join(homedir(), '.jarvis-orb', 'brain.db');
 const DEFAULT_MEMPALACE_PATHS = [
+  join(homedir(), 'claude-telegram', 'memory'),
   join(homedir(), 'MemPalace'),
   join(homedir(), 'Projects', 'MemPalace'),
   join(homedir(), 'Projects', 'mempalace'),
@@ -306,7 +307,7 @@ export function createJarvisMemoryDbSourceReader(project = 'waypath'): SourceRea
           `SELECT id, name, entity_type, properties, confidence, updated_at
              FROM entities
             ORDER BY updated_at DESC
-            LIMIT 10`,
+            LIMIT 100`,
         ).map<ImportedEntityInput>((row) => {
           const properties = safeJsonObject(row.properties);
           const rawId = asString(row.id);
@@ -354,7 +355,7 @@ export function createJarvisMemoryDbSourceReader(project = 'waypath'): SourceRea
           `SELECT id, subject_id, predicate, object_id, confidence, updated_at
              FROM relationships
             ORDER BY updated_at DESC
-            LIMIT 16`,
+            LIMIT 100`,
         ).map<ImportedRelationshipInput>((row) => {
           const rawId = asString(row.id);
           return {
@@ -393,7 +394,7 @@ export function createJarvisMemoryDbSourceReader(project = 'waypath'): SourceRea
              FROM decisions
             WHERE decision <> ''
             ORDER BY timestamp DESC
-            LIMIT 12`,
+            LIMIT 50`,
         )
           .filter((row) => shouldKeepDecision(asString(row.decision), asString(row.reasoning)))
           .map<ImportedDecisionInput>((row) => {
@@ -419,7 +420,7 @@ export function createJarvisMemoryDbSourceReader(project = 'waypath'): SourceRea
           `SELECT id, category, key, value, confidence, updated_at
              FROM preferences
             ORDER BY updated_at DESC
-            LIMIT 12`,
+            LIMIT 50`,
         ).map<ImportedPreferenceInput>((row) => {
           const rawId = asString(row.id);
           return {
@@ -444,7 +445,7 @@ export function createJarvisMemoryDbSourceReader(project = 'waypath'): SourceRea
           `SELECT id, memory_type, content, confidence, source, created_at, access_tier, description
              FROM memories
             ORDER BY created_at DESC
-            LIMIT 12`,
+            LIMIT 100`,
         )
           .filter((row) => shouldKeepMemory(asString(row.description), asString(row.content)))
           .map<ImportedMemoryInput>((row) => {
@@ -469,7 +470,7 @@ export function createJarvisMemoryDbSourceReader(project = 'waypath'): SourceRea
           };
         });
 
-        const promotionCandidates: ImportedPromotionCandidateInput[] = decisions.slice(0, 2).map((decision) => ({
+        const promotionCandidates: ImportedPromotionCandidateInput[] = decisions.slice(0, 10).map((decision) => ({
           candidate_id: prefixedId('jarvis', 'promotion-candidate', slugify(decision.decision_id)),
           claim_id: prefixedId('jarvis', 'claim', slugify(decision.decision_id)),
           proposed_action: 'create',
