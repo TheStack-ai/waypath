@@ -4,7 +4,7 @@ import type {
   RecallWeightOverrides,
 } from '../contracts/index.js';
 import { createRetrievalStrategy } from '../archive-kernel/retrieval/index.js';
-import { searchTruthKernel } from '../archive-kernel/search/index.js';
+import { queryTruthDirect, searchTruthKernel } from '../archive-kernel/search/index.js';
 import type {
   TruthDecisionRecord,
   TruthEntityRecord,
@@ -233,13 +233,26 @@ function makeBundleId(query: string): string {
   return `bundle:truth:${slugify(query)}:${nowIso()}`;
 }
 
+/** Minimum number of truth-direct results to consider "sufficient" */
+const TRUTH_SUFFICIENCY_THRESHOLD = 3;
+
+/**
+ * Build an evidence bundle using truth-first recall.
+ *
+ * Flow:
+ * 1. Try queryTruthDirect() first — canonical truth data, no RRF
+ * 2. If sufficient results (>= TRUTH_SUFFICIENCY_THRESHOLD), return them
+ * 3. If insufficient, fall back to archive-internal RRF fusion
+ *
+ * This enforces the truth-first / archive-second principle:
+ * RRF is only used for archive-internal result merging, never at the truth level.
+ */
 export function buildLocalArchiveBundle(
   query: string,
   store?: SqliteTruthKernelStorage,
   options: LocalArchiveRuntimeOptions = {},
 ): EvidenceBundle {
   const normalizedQuery = query.trim();
-  const evidenceItems = store ? collectStoreEvidence(store) : [];
 
   if (!store) {
     return {
@@ -262,15 +275,32 @@ export function buildLocalArchiveBundle(
     };
   }
 
-  // Use the RRF-based search pipeline for real multi-dimensional ranking
-  const searchResults = searchTruthKernel(normalizedQuery, {
+  const evidenceItems = collectStoreEvidence(store);
+
+  // Step 1: Truth-first — direct query against canonical truth (no RRF)
+  const truthResults = queryTruthDirect(normalizedQuery, {
     store,
     recallWeights: options.weights,
   });
 
+  // Step 2: Check sufficiency — if truth has enough results, return them directly
+  let searchResults = truthResults;
+  if (truthResults.length < TRUTH_SUFFICIENCY_THRESHOLD) {
+    // Step 3: Fall back to archive-internal RRF fusion (combines all sources including derived data)
+    const archiveResults = searchTruthKernel(normalizedQuery, {
+      store,
+      recallWeights: options.weights,
+    });
+    // Merge: truth results first (priority), then archive results that aren't duplicates
+    const truthIds = new Set(truthResults.map((r) => r.candidate.id));
+    searchResults = [
+      ...truthResults,
+      ...archiveResults.filter((r) => !truthIds.has(r.candidate.id)),
+    ];
+  }
+
   // Convert ScoredResults back to EvidenceItems for backward compatibility
   const pipelineItems: EvidenceItem[] = searchResults.map((sr) => {
-    // Find matching pre-collected item by ID, or synthesize from candidate
     const existing = evidenceItems.find((item) =>
       item.evidence_id.endsWith(sr.candidate.id) || item.title.includes(sr.candidate.title),
     );

@@ -295,27 +295,36 @@ function buildEvidenceQuery(
     .join(' ');
 }
 
+/**
+ * Append evidence as a supplementary appendix.
+ * Truth highlights (already in context_pack) are the main content.
+ * Evidence appendix is secondary — only enabled when it adds value beyond truth highlights.
+ */
 function withEvidenceAppendix(
   pack: SessionStartResult['context_pack'],
   query: string,
   store: ReturnType<typeof createTruthKernelStorage>,
   recallWeights?: RecallWeightOverrides,
 ): SessionStartResult['context_pack'] {
+  if (!query.trim()) return pack;
+
   const evidenceBundle = buildLocalArchiveBundle(
     query,
     store,
     recallWeights ? { weights: recallWeights } : undefined,
   );
+
+  // Only persist and attach if the bundle has items beyond what truth highlights already cover
+  if (evidenceBundle.items.length === 0) return pack;
+
   store.upsertEvidenceBundle(evidenceBundle);
-  return evidenceBundle.items.length > 0
-    ? {
-        ...pack,
-        evidence_appendix: {
-          enabled: true,
-          bundles: [evidenceBundle.bundle_id],
-        },
-      }
-    : pack;
+  return {
+    ...pack,
+    evidence_appendix: {
+      enabled: true,
+      bundles: [evidenceBundle.bundle_id],
+    },
+  };
 }
 
 function makeSessionId(input: SessionStartInput): string {

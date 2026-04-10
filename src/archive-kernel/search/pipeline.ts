@@ -45,13 +45,93 @@ const DEFAULT_SOURCE_KIND_WEIGHTS: Readonly<Record<string, number>> = {
 };
 
 /**
- * Execute the full search pipeline against the truth kernel.
+ * Query truth kernel directly — no RRF fusion.
  *
- * 1. Gather candidates from all truth tables
- * 2. Score each candidate on 4 dimensions
- * 3. Rank each dimension independently
- * 4. Fuse via RRF
- * 5. Dedup
+ * Scores candidates by combined keyword + provenance + lexical scoring.
+ * This is the truth-first path: returns canonical truth results directly.
+ * Use this before falling back to archive-internal RRF fusion.
+ */
+export function queryTruthDirect(
+  query: string,
+  options: SearchPipelineOptions,
+): ScoredResult[] {
+  const { store, recallWeights, graphDepths } = options;
+  const normalizedQuery = query.trim().toLowerCase();
+  if (normalizedQuery.length === 0) return [];
+
+  const tokens = tokenize(normalizedQuery);
+
+  // Only gather from truth tables (entities, decisions, preferences, memories)
+  // NOT evidence_bundles or knowledge_pages — those are derived, not canonical truth
+  const candidates = gatherTruthCandidates(store);
+  if (candidates.length === 0) return [];
+
+  // Score each candidate with a direct combined score (no RRF)
+  const scored: ScoredResult[] = candidates.map((c) => {
+    const titleLower = c.title.toLowerCase();
+    const contentLower = c.content.toLowerCase();
+
+    // Keyword score: title matches 3x, content 1x
+    let keyword = 0;
+    for (const token of tokens) {
+      if (titleLower.includes(token)) keyword += 3;
+      if (contentLower.includes(token)) keyword += 1;
+    }
+
+    // Graph score
+    let graph = 0;
+    if (graphDepths && graphDepths.size > 0) {
+      const depth = graphDepths.get(c.id);
+      const scopeId = c.metadata.scope_entity_id as string | undefined;
+      const scopeDepth = scopeId ? graphDepths.get(scopeId) : undefined;
+      const subjectRef = c.metadata.subject_ref as string | undefined;
+      const subjectDepth = subjectRef ? graphDepths.get(subjectRef) : undefined;
+      const bestDepth = minDefined(depth, scopeDepth, subjectDepth);
+      if (bestDepth !== undefined) graph = 1 / (1 + bestDepth);
+    }
+
+    // Provenance score
+    const systemWeight = recallWeights?.sourceSystems?.[c.source_system]
+      ?? DEFAULT_SOURCE_SYSTEM_WEIGHTS[c.source_system]
+      ?? 0.5;
+    const kindWeight = recallWeights?.sourceKinds?.[c.source_kind]
+      ?? DEFAULT_SOURCE_KIND_WEIGHTS[c.source_kind]
+      ?? 0.4;
+    const provenance = systemWeight + kindWeight + (c.confidence ?? 0);
+
+    // Lexical coverage
+    let matchCount = 0;
+    let titleBonus = 0;
+    for (const token of tokens) {
+      const inTitle = titleLower.includes(token);
+      const inContent = contentLower.includes(token);
+      if (inTitle || inContent) matchCount++;
+      if (inTitle) titleBonus += 0.5;
+    }
+    const lexical = tokens.length > 0 ? (matchCount / tokens.length) + titleBonus : 0;
+
+    // Combined direct score: keyword-dominant, provenance and graph as boosters
+    const total = keyword * 2.0 + provenance * 1.0 + graph * 3.0 + lexical * 0.5;
+
+    return {
+      candidate: c,
+      score: total,
+      breakdown: { keyword, graph, provenance, lexical, rrf_fused: 0 },
+    };
+  });
+
+  return scored
+    .filter((s) => s.score > 0 && s.breakdown.keyword > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, options.store ? 20 : 8);
+}
+
+/**
+ * Archive-internal RRF fusion pipeline.
+ *
+ * Combines 4 ranking dimensions via Reciprocal Rank Fusion.
+ * Use this only for archive-internal result merging — NOT as the primary
+ * truth query path. Call queryTruthDirect() first for truth-first recall.
  */
 export function searchTruthKernel(
   query: string,
@@ -98,16 +178,15 @@ export function searchTruthKernel(
 }
 
 /**
- * Gather candidates from all truth kernel tables.
+ * Gather canonical truth candidates only: entities, decisions, preferences, memories.
+ * Excludes evidence_bundles and knowledge_pages (those are derived, not canonical truth).
  */
-function gatherCandidates(
+function gatherTruthCandidates(
   store: SqliteTruthKernelStorage,
-  opts: SearchOptions,
+  limit = 60,
 ): SearchCandidate[] {
-  const limit = (opts.limit ?? 20) * 3; // Over-fetch for filtering
   const candidates: SearchCandidate[] = [];
 
-  // Entities
   for (const entity of store.listActiveEntities(limit)) {
     candidates.push({
       id: entity.entity_id,
@@ -123,7 +202,6 @@ function gatherCandidates(
     });
   }
 
-  // Decisions
   for (const decision of store.listActiveDecisions(limit)) {
     candidates.push({
       id: decision.decision_id,
@@ -139,7 +217,6 @@ function gatherCandidates(
     });
   }
 
-  // Preferences
   for (const pref of store.listActivePreferences(limit)) {
     candidates.push({
       id: pref.preference_id,
@@ -155,7 +232,6 @@ function gatherCandidates(
     });
   }
 
-  // Promoted memories
   for (const mem of store.listActivePromotedMemories(limit)) {
     candidates.push({
       id: mem.memory_id,
@@ -171,7 +247,21 @@ function gatherCandidates(
     });
   }
 
-  // Evidence bundles
+  return candidates;
+}
+
+/**
+ * Gather ALL candidates from truth kernel tables including derived data.
+ * Used by archive-internal RRF pipeline which combines all sources.
+ */
+function gatherCandidates(
+  store: SqliteTruthKernelStorage,
+  opts: SearchOptions,
+): SearchCandidate[] {
+  const limit = (opts.limit ?? 20) * 3;
+  const candidates = gatherTruthCandidates(store, limit);
+
+  // Evidence bundles (archive-derived)
   for (const bundle of store.listEvidenceBundles(limit)) {
     for (const item of bundle.items) {
       candidates.push({
@@ -189,7 +279,7 @@ function gatherCandidates(
     }
   }
 
-  // Knowledge pages
+  // Knowledge pages (derived)
   for (const page of store.listKnowledgePages(limit)) {
     candidates.push({
       id: page.page.page_id,
@@ -308,13 +398,18 @@ function rankByLexical(
   if (tokens.length === 0) return [...candidates];
 
   const scored = candidates.map((c) => {
-    const haystack = `${c.title}\n${c.content}\n${c.id}`.toLowerCase();
+    const titleLower = c.title.toLowerCase();
+    const contentLower = c.content.toLowerCase();
     let matchCount = 0;
+    let titleBonus = 0;
     for (const token of tokens) {
-      if (haystack.includes(token)) matchCount++;
+      const inTitle = titleLower.includes(token);
+      const inContent = contentLower.includes(token);
+      if (inTitle || inContent) matchCount++;
+      if (inTitle) titleBonus += 0.5;
     }
-    const coverage = tokens.length > 0 ? matchCount / tokens.length : 0;
-    return { candidate: c, score: coverage };
+    const coverage = matchCount / tokens.length;
+    return { candidate: c, score: coverage + titleBonus };
   });
 
   return scored
