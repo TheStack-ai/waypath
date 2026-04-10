@@ -2,6 +2,8 @@ import {
   type ContradictionItem,
   type FacadeApi,
   type FacadeDescription,
+  type GraphQueryResult,
+  type GraphTraversalPattern,
   type InspectCandidateResult,
   type InspectPageResult,
   type PageResult,
@@ -18,8 +20,9 @@ import {
 } from '../contracts';
 import { createSessionRuntime, type SessionRuntimeOptions } from '../session-runtime';
 import { buildLocalArchiveBundle } from '../jarvis_fusion/archive-provider.js';
-import { synthesizeSessionPage } from '../jarvis_fusion/page-service.js';
-import { reviewPromotionCandidate, submitPromotionCandidate } from '../jarvis_fusion/promotion-service.js';
+import { synthesizePage } from '../knowledge-pages/index.js';
+import { submitCandidate, reviewCandidate } from '../promotion/index.js';
+import { expandGraphContext, executePattern } from '../ontology-support/index.js';
 import { createTruthKernelStorage, defaultTruthKernelStoreLocation } from '../jarvis_fusion/truth-kernel/index.js';
 
 export interface FacadeOptions extends SessionRuntimeOptions {
@@ -37,7 +40,7 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
   const description: FacadeDescription = {
     name: 'waypath-facade',
     host_shims: ['codex'],
-    verbs: ['session-start', 'recall', 'page', 'promote', 'review', 'review-queue', 'inspect-page', 'inspect-candidate'],
+    verbs: ['session-start', 'recall', 'page', 'promote', 'review', 'review-queue', 'inspect-page', 'inspect-candidate', 'graph-query'],
     access_layer: 'operator-facing',
     session_runtime: 'local-first',
   };
@@ -84,13 +87,11 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
       };
     },
     page(subject: string): PageResult {
-      const session = withEvidenceAppendix(
-        runtime.buildContextPack({ project: subject }),
-        buildEvidenceQuery(subject),
-        store,
-        options.recallWeights,
-      );
-      const page = synthesizeSessionPage(session, store);
+      const page = synthesizePage(store, {
+        page_type: 'session_brief',
+        project: subject,
+        subject,
+      });
       return {
         operation: 'page',
         status: 'ready',
@@ -102,29 +103,36 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
       };
     },
     promote(subject: string): PromoteResult {
-      const candidate = submitPromotionCandidate(subject, store);
+      const result = submitCandidate(store, { subject });
       return {
         operation: 'promote',
         status: 'ready',
-        message: candidate.summary,
-        candidate,
+        message: result.message,
+        candidate: result.candidate,
       };
     },
     review(candidateId: string, status: 'accepted' | 'pending_review' | 'rejected' | 'needs_more_evidence' | 'superseded', notes?: string): ReviewResult {
-      const candidate = reviewPromotionCandidate(candidateId, status, notes, store);
-      if (!candidate) {
+      const dbStatus = status === 'pending_review' ? 'pending'
+        : status === 'needs_more_evidence' ? 'needs_more_evidence'
+        : status;
+      const result = reviewCandidate(store, {
+        candidate_id: candidateId,
+        status: dbStatus as 'pending' | 'accepted' | 'rejected' | 'superseded' | 'needs_more_evidence',
+        notes,
+      });
+      if (!result.success) {
         return {
           operation: 'review',
           status: 'missing',
-          message: `Promotion candidate not found: ${candidateId}`,
+          message: result.message,
         };
       }
 
       return {
         operation: 'review',
         status: 'ready',
-        message: candidate.summary,
-        candidate,
+        message: result.message,
+        candidate: result.candidate,
       };
     },
     reviewQueue(): ReviewQueueResult {
@@ -220,6 +228,58 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
         status: 'ready',
         message: `Loaded promotion candidate ${candidateId}`,
         candidate,
+      };
+    },
+    graphQuery(entityId: string, pattern?: GraphTraversalPattern): GraphQueryResult {
+      const result = pattern
+        ? executePattern(store, { pattern, seed_entity_id: entityId })
+        : expandGraphContext(store, [entityId], { maxDepth: 2, maxResults: 20 });
+
+      return {
+        operation: 'graph-query',
+        status: 'ready',
+        message: `Graph expansion from ${entityId}${pattern ? ` (pattern: ${pattern})` : ''}`,
+        result: {
+          seed_entities: [...result.seed_entities],
+          expanded_entities: result.expanded_entities.map((e) => ({
+            entity_id: e.entity_id,
+            name: e.name,
+            entity_type: e.entity_type,
+            status: e.status,
+            summary: e.summary,
+            state_json: e.state_json,
+            canonical_page_id: e.canonical_page_id,
+            created_at: e.created_at,
+            updated_at: e.updated_at,
+          })),
+          expanded_relationships: result.expanded_relationships.map((r) => ({
+            relationship_id: r.relationship_id,
+            from_entity_id: r.from_entity_id,
+            relation_type: r.relation_type,
+            to_entity_id: r.to_entity_id,
+            weight: r.weight,
+            status: r.status,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+          })),
+          traversal_paths: result.traversal_paths.map((p) => ({
+            seed_entity_id: p.seed_entity_id,
+            steps: [...p.steps],
+            terminal_entity_ids: [...p.terminal_entity_ids],
+          })),
+          related_decisions: result.related_decisions.map((d) => ({
+            decision_id: d.decision_id,
+            title: d.title,
+            statement: d.statement,
+            status: d.status,
+            scope_entity_id: d.scope_entity_id,
+            effective_at: d.effective_at,
+            superseded_by: d.superseded_by,
+            provenance_id: d.provenance_id,
+            created_at: d.created_at,
+            updated_at: d.updated_at,
+          })),
+        },
       };
     },
   };

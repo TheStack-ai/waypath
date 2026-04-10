@@ -191,7 +191,8 @@ export type FacadeVerb =
   | 'review'
   | 'review-queue'
   | 'inspect-page'
-  | 'inspect-candidate';
+  | 'inspect-candidate'
+  | 'graph-query';
 
 export interface FacadeDescription {
   name: string;
@@ -272,6 +273,76 @@ export interface InspectCandidateResult {
   candidate?: PromotionCandidateView;
 }
 
+// Inline types for graph query results (avoids circular deps through jarvis_fusion/contracts)
+export interface GraphQueryEntitySummary {
+  entity_id: string;
+  name: string;
+  entity_type: string;
+  status: string;
+  summary: string;
+  state_json: string;
+  canonical_page_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GraphQueryRelationshipSummary {
+  relationship_id: string;
+  from_entity_id: string;
+  relation_type: string;
+  to_entity_id: string;
+  weight: number | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GraphQueryDecisionSummary {
+  decision_id: string;
+  title: string;
+  statement: string;
+  status: string;
+  scope_entity_id: string | null;
+  effective_at: string | null;
+  superseded_by: string | null;
+  provenance_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GraphQueryPathStep {
+  entity_id: string;
+  entity_name: string;
+  entity_type: string;
+  relation_type: string;
+  direction: 'outgoing' | 'incoming';
+  depth: number;
+  weight: number | null;
+}
+
+export interface GraphQueryTraversalPath {
+  seed_entity_id: string;
+  steps: readonly GraphQueryPathStep[];
+  terminal_entity_ids: readonly string[];
+}
+
+export interface GraphQueryExpansionResult {
+  seed_entities: readonly string[];
+  expanded_entities: readonly GraphQueryEntitySummary[];
+  expanded_relationships: readonly GraphQueryRelationshipSummary[];
+  traversal_paths: readonly GraphQueryTraversalPath[];
+  related_decisions: readonly GraphQueryDecisionSummary[];
+}
+
+export interface GraphQueryResult {
+  operation: 'graph-query';
+  status: 'ready';
+  message: string;
+  result: GraphQueryExpansionResult;
+}
+
+export type GraphTraversalPattern = 'project_context' | 'person_context' | 'system_reasoning' | 'contradiction_lookup';
+
 export interface FacadeApi {
   describe(): FacadeDescription;
   sessionStart(input: SessionStartInput): SessionStartResult;
@@ -282,6 +353,7 @@ export interface FacadeApi {
   reviewQueue(): ReviewQueueResult;
   inspectPage(pageId: string): InspectPageResult;
   inspectCandidate(candidateId: string): InspectCandidateResult;
+  graphQuery(entityId: string, pattern?: GraphTraversalPattern): GraphQueryResult;
 }
 
 export interface SessionRuntime {

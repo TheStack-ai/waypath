@@ -17,6 +17,8 @@ export interface CliArgs {
   pageId?: string;
   status?: string;
   notes?: string;
+  entityId?: string;
+  pattern?: string;
   help: boolean;
 }
 
@@ -44,6 +46,8 @@ export function createCliArgs(argv: string[]): CliArgs {
     if (token === '--page-id') { args.pageId = readValue(values, ++index, '--page-id'); continue; }
     if (token === '--status') { args.status = readValue(values, ++index, '--status'); continue; }
     if (token === '--notes') { args.notes = readValue(values, ++index, '--notes'); continue; }
+    if (token === '--entity-id') { args.entityId = readValue(values, ++index, '--entity-id'); continue; }
+    if (token === '--pattern') { args.pattern = readValue(values, ++index, '--pattern'); continue; }
     throw new Error(`Unknown CLI flag: ${token}`);
   }
 
@@ -69,6 +73,7 @@ export function formatUsage(): string {
     '  waypath review-queue [--json] [--store-path <path>]',
     '  waypath inspect-page --page-id <id> [--json] [--store-path <path>]',
     '  waypath inspect-candidate --candidate-id <id> [--json] [--store-path <path>]',
+    '  waypath graph-query --entity-id <id> [--pattern <project_context|person_context|system_reasoning|contradiction_lookup>] [--json]',
     '  waypath import-seed [--project <name>] [--store-path <path>] [--json]',
     '  waypath import-local [--project <name>] [--store-path <path>] [--json]',
     '  waypath source-status [--json]',

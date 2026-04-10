@@ -16,6 +16,7 @@ import {
   type SqliteTruthKernelStorage,
 } from '../jarvis_fusion/truth-kernel/index.js';
 import { createRetrievalStrategy } from '../archive-kernel/retrieval/index.js';
+import { expandGraphContext } from '../ontology-support/index.js';
 import type {
   TruthDecisionRecord,
   TruthEntityRecord,
@@ -303,6 +304,7 @@ function rankEntities(
   projectEntityId: string,
   strategy: ReturnType<typeof createRetrievalStrategy>,
   focusTokens: readonly string[],
+  graphDepthMap?: ReadonlyMap<string, number>,
 ): readonly TruthEntityRecord[] {
   const connectionCounts = new Map<string, number>();
   for (const relationship of relationships) {
@@ -319,12 +321,15 @@ function rankEntities(
   return entities
     .map<ScoredValue<TruthEntityRecord>>((entity) => {
       const provenance = entityProvenance(store, entity);
+      // Depth-based graph relevance: depth 1 = 1.0, depth 2 = 0.5, depth 3 = 0.25
+      const depth = graphDepthMap?.get(entity.entity_id);
+      const depthScore = depth !== undefined ? 1.0 / Math.pow(2, depth - 1) : 0;
       const score = runtimeRetrievalStrategy.score({
         baseScore: entityCategoryWeight(entity, projectEntityId),
         sourceSystem: provenance?.source_system,
         sourceKind: provenance?.source_kind,
         provenanceConfidence: provenance?.confidence ?? 0.5,
-        graphRelevance: (connectionCounts.get(entity.entity_id) ?? 0) * 0.45,
+        graphRelevance: (connectionCounts.get(entity.entity_id) ?? 0) * 0.45 + depthScore,
       }).total;
       return { value: entity, score };
     })
@@ -619,6 +624,23 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
 
       const snapshot = loadSessionStartSnapshot(store, { projectEntityId });
       const expanded = expandSnapshot(store, snapshot, projectEntityId);
+
+      // Ontology-aware graph expansion first (seeds: project + explicit seed entities)
+      // Must happen before rankEntities so depth scores can inform ranking
+      const initialSeeds = uniqueStrings([projectEntityId, ...seedEntities]);
+      const graphExpansion = expandGraphContext(store, initialSeeds, { maxDepth: 2, maxResults: 15 });
+
+      // Build depth map: entity_id → minimum traversal depth (depth 1 = direct neighbor)
+      const graphDepthMap = new Map<string, number>();
+      for (const path of graphExpansion.traversal_paths) {
+        for (const step of path.steps) {
+          const existing = graphDepthMap.get(step.entity_id);
+          if (existing === undefined || step.depth < existing) {
+            graphDepthMap.set(step.entity_id, step.depth);
+          }
+        }
+      }
+
       const rankedEntities = rankEntities(
         store,
         expanded.entities,
@@ -626,6 +648,7 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
         projectEntityId,
         retrievalStrategy,
         focusTokens,
+        graphDepthMap,
       );
       const entityScores = new Map(
         rankedEntities.map((entity, index) => [entity.entity_id, rankedEntities.length - index] as const),
@@ -642,6 +665,13 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
       const entitiesById = new Map(
         rankedEntities.map((entity) => [entity.entity_id, entity] as const),
       );
+
+      // Merge graph expansion decisions into ranked decisions (dedup by decision_id)
+      const graphOnlyDecisions = graphExpansion.related_decisions.filter(
+        (d) => !rankedDecisions.some((rd) => rd.decision_id === d.decision_id),
+      );
+      const allDecisions = [...rankedDecisions, ...graphOnlyDecisions];
+
       const relatedEntityIds = uniqueStrings([
         ...seedEntities,
         ...rankedEntities.map((entity) => entity.entity_id),
@@ -649,6 +679,7 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
           relationship.from_entity_id,
           relationship.to_entity_id,
         ]),
+        ...graphExpansion.expanded_entities.map((entity) => entity.entity_id),
       ]);
       const relatedEntityNames = rankedEntities.map((entity) => entity.name);
       const graphRelationships = formatGraphRelationships(
@@ -661,6 +692,30 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
         retrievalStrategy,
         focusTokens,
       );
+
+      // Build related_pages from store (project-scoped pages + session brief)
+      const sessionBriefId = `page:session:${project}`;
+      const storedProjectPages = store.listKnowledgePages(5)
+        .filter(
+          (p) =>
+            p.linked_entity_ids.includes(projectEntityId) ||
+            p.page.page_type === 'project_page',
+        )
+        .map((p) => ({
+          page_id: p.page.page_id,
+          page_type: p.page.page_type,
+          title: p.page.title,
+          status: p.page.status,
+        }));
+      const relatedPages = [
+        {
+          page_id: sessionBriefId,
+          page_type: 'session_brief' as const,
+          title: `${project} session brief`,
+          status: 'canonical' as const,
+        },
+        ...storedProjectPages.filter((p) => p.page_id !== sessionBriefId),
+      ];
 
       return {
         session: {
@@ -676,7 +731,7 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
           activeTask,
         },
         truth_highlights: {
-          decisions: rankedDecisions.slice(0, 6).map((decision) => decision.title),
+          decisions: allDecisions.slice(0, 6).map((decision) => decision.title),
           preferences: rankedPreferences.slice(0, 6).map((preference) => `${preference.key}=${preference.value}`),
           entities: relatedEntityNames.slice(0, 8),
           promoted_memories: rankedPromotedMemories.slice(0, 6).map((memory) => memory.summary),
@@ -705,14 +760,7 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
           enabled: false,
           bundles: [],
         },
-        related_pages: [
-          {
-            page_id: `page:session:${project}`,
-            page_type: 'session_brief',
-            title: `${project} session brief`,
-            status: 'canonical',
-          },
-        ],
+        related_pages: relatedPages,
       };
     },
   };

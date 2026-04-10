@@ -306,6 +306,45 @@ export function runCli(argv: string[], io: CliIo): number {
     }
   }
 
+  if (parsed.command === 'graph-query') {
+    if (!parsed.entityId) {
+      io.stderr.write('Missing value for --entity-id\n');
+      io.stderr.write(`${formatUsage()}\n`);
+      return 1;
+    }
+
+    const validPatterns = new Set([
+      'project_context',
+      'person_context',
+      'system_reasoning',
+      'contradiction_lookup',
+    ]);
+    if (parsed.pattern && !validPatterns.has(parsed.pattern)) {
+      io.stderr.write(`Invalid pattern: ${parsed.pattern}\n`);
+      io.stderr.write(`${formatUsage()}\n`);
+      return 1;
+    }
+
+    const facade = createFacade(facadeOptions);
+    try {
+      const result = facade.graphQuery(
+        parsed.entityId,
+        parsed.pattern as 'project_context' | 'person_context' | 'system_reasoning' | 'contradiction_lookup' | undefined,
+      );
+      if (parsed.json) {
+        writeLine(io, JSON.stringify(result, null, 2));
+      } else {
+        writeLine(io, result.message);
+        writeLine(io, `entities=${result.result.expanded_entities.length}`);
+        writeLine(io, `relationships=${result.result.expanded_relationships.length}`);
+        writeLine(io, `decisions=${result.result.related_decisions.length}`);
+      }
+      return 0;
+    } finally {
+      facade.close();
+    }
+  }
+
   io.stderr.write(`Unknown command: ${parsed.command}\n`);
   io.stderr.write(`${formatUsage()}\n`);
   return 1;

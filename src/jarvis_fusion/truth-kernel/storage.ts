@@ -555,6 +555,38 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     };
   }
 
+  /**
+   * Mark knowledge pages stale when their linked_entity_ids_json or linked_decision_ids_json
+   * contains any of the given IDs. Uses json_each for precise JSON array matching.
+   * Returns the page_ids that were marked stale.
+   */
+  markKnowledgePagesStale(affectedIds: readonly string[]): readonly string[] {
+    if (affectedIds.length === 0) return [];
+    const timestamp = nowIso();
+    const staledPageIds: string[] = [];
+
+    for (const affectedId of affectedIds) {
+      const pages = this.all<{ page_id: string }>(
+        `SELECT page_id FROM knowledge_pages
+         WHERE status != 'stale'
+           AND (
+             EXISTS (SELECT 1 FROM json_each(linked_entity_ids_json) WHERE json_each.value = :id)
+             OR EXISTS (SELECT 1 FROM json_each(linked_decision_ids_json) WHERE json_each.value = :id)
+           )`,
+        { id: affectedId },
+      );
+      for (const row of pages) {
+        this.run(
+          `UPDATE knowledge_pages SET status = 'stale', updated_at = :ts WHERE page_id = :page_id`,
+          { ts: timestamp, page_id: row.page_id },
+        );
+        staledPageIds.push(row.page_id);
+      }
+    }
+
+    return staledPageIds;
+  }
+
   countTable(tableName: 'entities' | 'relationships' | 'decisions' | 'preferences' | 'promoted_memories' | 'knowledge_pages' | 'promotion_candidates' | 'evidence_bundles'): number {
     const row = this.get<{ count: number }>(`SELECT COUNT(*) as count FROM ${tableName}`);
     return row?.count ?? 0;

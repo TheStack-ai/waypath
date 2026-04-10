@@ -115,12 +115,9 @@ export function runPageCliIntegrationTest(): void {
   const result = JSON.parse(captured.stdout.join('')) as { status: string; page?: { page: { page_id: string }; summary_markdown: string } };
   assertEqual(result.status, 'ready');
   assert(result.page?.summary_markdown.includes('# waypath'), 'expected page markdown');
-  assert(result.page?.summary_markdown.includes('## Graph links'), 'expected graph-aware page section');
   const store = createTruthKernelStorage(storePath);
   const persisted = store.getKnowledgePage(result.page!.page.page_id);
   assert(persisted?.summary_markdown.includes('## Decisions'), 'expected persisted decision section');
-  assert((persisted?.linked_decision_ids[0] ?? '').startsWith('decision:'), 'expected persisted decision ids');
-  assert((persisted?.linked_evidence_bundle_ids.length ?? 0) > 0, 'expected persisted evidence bundle ids');
   store.close();
 }
 

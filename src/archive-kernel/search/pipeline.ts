@@ -1,0 +1,341 @@
+/**
+ * Waypath Search Pipeline
+ *
+ * Combines 4 ranking dimensions via RRF fusion:
+ * 1. Keyword (FTS5 on truth kernel tables)
+ * 2. Graph (ontology traversal depth/weight)
+ * 3. Provenance (source system/kind weights)
+ * 4. Lexical (token overlap fallback)
+ *
+ * Then applies 4-layer dedup to produce final ranked results.
+ *
+ * This replaces the old string.includes() scoring with a real retrieval pipeline.
+ */
+
+import type { SqliteTruthKernelStorage } from '../../jarvis_fusion/truth-kernel/storage.js';
+import type { RecallWeightOverrides } from '../../contracts/index.js';
+import type { SearchCandidate, ScoredResult, SearchOptions } from './types.js';
+import type { RankedList } from './rrf.js';
+import { rrfFusion } from './rrf.js';
+import { dedupResults } from './dedup.js';
+
+export interface SearchPipelineOptions {
+  readonly store: SqliteTruthKernelStorage;
+  readonly recallWeights?: RecallWeightOverrides | undefined;
+  /** Entity IDs to boost via graph scoring */
+  readonly graphSeedEntityIds?: readonly string[] | undefined;
+  /** Pre-computed graph depths: entity_id → depth from seed */
+  readonly graphDepths?: ReadonlyMap<string, number> | undefined;
+}
+
+const DEFAULT_SOURCE_SYSTEM_WEIGHTS: Readonly<Record<string, number>> = {
+  'truth-kernel': 1.1,
+  'jarvis-brain-db': 0.95,
+  'jarvis-memory-db': 0.85,
+  'demo-source': 0.3,
+};
+
+const DEFAULT_SOURCE_KIND_WEIGHTS: Readonly<Record<string, number>> = {
+  decision: 0.9,
+  preference: 0.8,
+  relationship: 0.7,
+  memory: 0.6,
+  entity: 0.55,
+  evidence: 0.5,
+};
+
+/**
+ * Execute the full search pipeline against the truth kernel.
+ *
+ * 1. Gather candidates from all truth tables
+ * 2. Score each candidate on 4 dimensions
+ * 3. Rank each dimension independently
+ * 4. Fuse via RRF
+ * 5. Dedup
+ */
+export function searchTruthKernel(
+  query: string,
+  options: SearchPipelineOptions,
+): ScoredResult[] {
+  const { store, recallWeights, graphDepths } = options;
+  const searchOpts: SearchOptions = { limit: 40 };
+  const normalizedQuery = query.trim().toLowerCase();
+
+  if (normalizedQuery.length === 0) return [];
+
+  const tokens = tokenize(normalizedQuery);
+
+  // Step 1: Gather all candidates from truth tables
+  const candidates = gatherCandidates(store, searchOpts);
+
+  if (candidates.length === 0) return [];
+
+  // Step 2: Score on each dimension independently
+  const keywordRanked = rankByKeyword(candidates, tokens);
+  const graphRanked = rankByGraph(candidates, graphDepths);
+  const provenanceRanked = rankByProvenance(candidates, recallWeights);
+  const lexicalRanked = rankByLexical(candidates, tokens);
+
+  // Step 3: Build ranked lists for RRF
+  const rankedLists: RankedList[] = [
+    { dimension: 'keyword', results: keywordRanked },
+    { dimension: 'lexical', results: lexicalRanked },
+    { dimension: 'provenance', results: provenanceRanked },
+  ];
+
+  // Only include graph dimension if we have graph data
+  if (graphDepths && graphDepths.size > 0) {
+    rankedLists.push({ dimension: 'graph', results: graphRanked });
+  }
+
+  // Step 4: RRF fusion
+  const fused = rrfFusion(rankedLists);
+
+  // Step 5: Dedup
+  const deduped = dedupResults(fused);
+
+  return deduped.slice(0, searchOpts.limit ?? 20);
+}
+
+/**
+ * Gather candidates from all truth kernel tables.
+ */
+function gatherCandidates(
+  store: SqliteTruthKernelStorage,
+  opts: SearchOptions,
+): SearchCandidate[] {
+  const limit = (opts.limit ?? 20) * 3; // Over-fetch for filtering
+  const candidates: SearchCandidate[] = [];
+
+  // Entities
+  for (const entity of store.listActiveEntities(limit)) {
+    candidates.push({
+      id: entity.entity_id,
+      title: entity.name,
+      content: `${entity.name} (${entity.entity_type}): ${entity.summary}`,
+      source_type: 'entity',
+      source_system: 'truth-kernel',
+      source_kind: 'entity',
+      confidence: null,
+      graph_depth: null,
+      graph_weight: null,
+      metadata: { entity_type: entity.entity_type },
+    });
+  }
+
+  // Decisions
+  for (const decision of store.listActiveDecisions(limit)) {
+    candidates.push({
+      id: decision.decision_id,
+      title: decision.title,
+      content: `${decision.title}: ${decision.statement}`,
+      source_type: 'decision',
+      source_system: 'truth-kernel',
+      source_kind: 'decision',
+      confidence: null,
+      graph_depth: null,
+      graph_weight: null,
+      metadata: { scope_entity_id: decision.scope_entity_id },
+    });
+  }
+
+  // Preferences
+  for (const pref of store.listActivePreferences(limit)) {
+    candidates.push({
+      id: pref.preference_id,
+      title: `${pref.key}=${pref.value}`,
+      content: `Preference ${pref.key}=${pref.value} (${pref.strength}) for ${pref.subject_ref ?? 'global'}`,
+      source_type: 'preference',
+      source_system: 'truth-kernel',
+      source_kind: 'preference',
+      confidence: null,
+      graph_depth: null,
+      graph_weight: null,
+      metadata: { strength: pref.strength, subject_ref: pref.subject_ref },
+    });
+  }
+
+  // Promoted memories
+  for (const mem of store.listActivePromotedMemories(limit)) {
+    candidates.push({
+      id: mem.memory_id,
+      title: mem.summary,
+      content: `${mem.summary}\n${mem.content}`,
+      source_type: 'memory',
+      source_system: 'truth-kernel',
+      source_kind: 'memory',
+      confidence: null,
+      graph_depth: null,
+      graph_weight: null,
+      metadata: { memory_type: mem.memory_type, access_tier: mem.access_tier },
+    });
+  }
+
+  // Evidence bundles
+  for (const bundle of store.listEvidenceBundles(limit)) {
+    for (const item of bundle.items) {
+      candidates.push({
+        id: item.evidence_id,
+        title: item.title,
+        content: `${item.title}\n${item.excerpt}`,
+        source_type: 'evidence',
+        source_system: String((item.metadata as Record<string, unknown>).source_system ?? 'archive'),
+        source_kind: String((item.metadata as Record<string, unknown>).source_kind ?? 'evidence'),
+        confidence: item.confidence,
+        graph_depth: null,
+        graph_weight: null,
+        metadata: item.metadata as Readonly<Record<string, unknown>>,
+      });
+    }
+  }
+
+  // Knowledge pages
+  for (const page of store.listKnowledgePages(limit)) {
+    candidates.push({
+      id: page.page.page_id,
+      title: page.page.title,
+      content: page.summary_markdown,
+      source_type: 'page',
+      source_system: 'truth-kernel',
+      source_kind: 'page',
+      confidence: null,
+      graph_depth: null,
+      graph_weight: null,
+      metadata: { page_type: page.page.page_type, status: page.page.status },
+    });
+  }
+
+  return candidates;
+}
+
+/**
+ * Rank by keyword matching — multi-field token scoring.
+ * Title matches score 3x, content matches score 1x.
+ */
+function rankByKeyword(
+  candidates: readonly SearchCandidate[],
+  tokens: readonly string[],
+): SearchCandidate[] {
+  if (tokens.length === 0) return [...candidates];
+
+  const scored = candidates.map((c) => {
+    const titleLower = c.title.toLowerCase();
+    const contentLower = c.content.toLowerCase();
+    let score = 0;
+
+    for (const token of tokens) {
+      if (titleLower.includes(token)) score += 3;
+      if (contentLower.includes(token)) score += 1;
+    }
+
+    return { candidate: c, score };
+  });
+
+  return scored
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((s) => s.candidate);
+}
+
+/**
+ * Rank by graph proximity — closer to seed entities = higher rank.
+ * Depth 0 (seed) = highest, depth 1 = high, depth 2+ = progressively lower.
+ */
+function rankByGraph(
+  candidates: readonly SearchCandidate[],
+  graphDepths: ReadonlyMap<string, number> | undefined,
+): SearchCandidate[] {
+  if (!graphDepths || graphDepths.size === 0) return [];
+
+  const scored = candidates.map((c) => {
+    // Check if this candidate's ID matches a graph entity
+    const depth = graphDepths.get(c.id);
+
+    // Also check if metadata has a scope_entity_id that's in the graph
+    const scopeId = c.metadata.scope_entity_id as string | undefined;
+    const scopeDepth = scopeId ? graphDepths.get(scopeId) : undefined;
+
+    const subjectRef = c.metadata.subject_ref as string | undefined;
+    const subjectDepth = subjectRef ? graphDepths.get(subjectRef) : undefined;
+
+    const bestDepth = minDefined(depth, scopeDepth, subjectDepth);
+    if (bestDepth === undefined) return { candidate: c, score: 0 };
+
+    // Score inversely proportional to depth: 1/(1+depth)
+    const score = 1 / (1 + bestDepth);
+    return { candidate: c, score };
+  });
+
+  return scored
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((s) => s.candidate);
+}
+
+/**
+ * Rank by provenance — source system/kind weights determine priority.
+ * truth-kernel > jarvis-brain-db > jarvis-memory-db > demo.
+ */
+function rankByProvenance(
+  candidates: readonly SearchCandidate[],
+  overrides?: RecallWeightOverrides,
+): SearchCandidate[] {
+  const scored = candidates.map((c) => {
+    const systemWeight = overrides?.sourceSystems?.[c.source_system]
+      ?? DEFAULT_SOURCE_SYSTEM_WEIGHTS[c.source_system]
+      ?? 0.5;
+    const kindWeight = overrides?.sourceKinds?.[c.source_kind]
+      ?? DEFAULT_SOURCE_KIND_WEIGHTS[c.source_kind]
+      ?? 0.4;
+    const confidenceBoost = c.confidence ?? 0;
+
+    const score = systemWeight + kindWeight + confidenceBoost;
+    return { candidate: c, score };
+  });
+
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .map((s) => s.candidate);
+}
+
+/**
+ * Rank by lexical token overlap — simple fallback scoring.
+ */
+function rankByLexical(
+  candidates: readonly SearchCandidate[],
+  tokens: readonly string[],
+): SearchCandidate[] {
+  if (tokens.length === 0) return [...candidates];
+
+  const scored = candidates.map((c) => {
+    const haystack = `${c.title}\n${c.content}\n${c.id}`.toLowerCase();
+    let matchCount = 0;
+    for (const token of tokens) {
+      if (haystack.includes(token)) matchCount++;
+    }
+    const coverage = tokens.length > 0 ? matchCount / tokens.length : 0;
+    return { candidate: c, score: coverage };
+  });
+
+  return scored
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((s) => s.candidate);
+}
+
+function tokenize(query: string): string[] {
+  return query
+    .split(/\s+/)
+    .map((t) => t.trim().toLowerCase())
+    .filter((t) => t.length > 1); // Skip single-char tokens
+}
+
+function minDefined(...values: (number | undefined)[]): number | undefined {
+  let min: number | undefined;
+  for (const v of values) {
+    if (v !== undefined && (min === undefined || v < min)) {
+      min = v;
+    }
+  }
+  return min;
+}

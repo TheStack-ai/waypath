@@ -4,6 +4,7 @@ import type {
   RecallWeightOverrides,
 } from '../contracts/index.js';
 import { createRetrievalStrategy } from '../archive-kernel/retrieval/index.js';
+import { searchTruthKernel } from '../archive-kernel/search/index.js';
 import type {
   TruthDecisionRecord,
   TruthEntityRecord,
@@ -261,31 +262,39 @@ export function buildLocalArchiveBundle(
     };
   }
 
-  const strategy = createRetrievalStrategy({
-    query: normalizedQuery,
-    weights: options.weights,
+  // Use the RRF-based search pipeline for real multi-dimensional ranking
+  const searchResults = searchTruthKernel(normalizedQuery, {
+    store,
+    recallWeights: options.weights,
   });
-  const ranked = evidenceItems
-    .filter((item) => passesFilters(item, undefined))
-    .map((item) => ({
-      item,
-      score: strategy.score({
-        title: item.title,
-        excerpt: item.excerpt,
-        sourceRef: item.source_ref,
-        provenanceConfidence: item.confidence,
-        sourceSystem: metadataStringValue(item.metadata, 'source_system'),
-        sourceKind: metadataStringValue(item.metadata, 'source_kind'),
-        graphRelevance: metadataNumberValue(item.metadata, 'graph_relevance'),
-      }).total,
-    }))
-    .filter((entry) => entry.score > 0);
+
+  // Convert ScoredResults back to EvidenceItems for backward compatibility
+  const pipelineItems: EvidenceItem[] = searchResults.map((sr) => {
+    // Find matching pre-collected item by ID, or synthesize from candidate
+    const existing = evidenceItems.find((item) =>
+      item.evidence_id.endsWith(sr.candidate.id) || item.title.includes(sr.candidate.title),
+    );
+    if (existing) return existing;
+
+    return toItem(
+      sr.candidate.source_type === 'entity' ? 'entity'
+        : sr.candidate.source_type === 'decision' ? 'decision'
+        : sr.candidate.source_type === 'preference' ? 'preference'
+        : 'promoted_memory',
+      sr.candidate.id,
+      sr.candidate.title,
+      sr.candidate.content,
+      null,
+      sr.candidate.confidence,
+      sr.candidate.metadata as Record<string, unknown>,
+    );
+  });
 
   return {
     bundle_id: makeBundleId(normalizedQuery),
     query: normalizedQuery,
     generated_at: nowIso(),
-    items: sortRankedItems(ranked).slice(0, 8),
+    items: pipelineItems.slice(0, 8),
   };
 }
 
