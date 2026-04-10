@@ -306,6 +306,58 @@ export function runCli(argv: string[], io: CliIo): number {
     }
   }
 
+  if (parsed.command === 'resolve-contradiction') {
+    if (!parsed.key) {
+      io.stderr.write('Missing value for --key\n');
+      io.stderr.write(`${formatUsage()}\n`);
+      return 1;
+    }
+    if (!parsed.keepPreferenceId) {
+      io.stderr.write('Missing value for --keep-preference-id\n');
+      io.stderr.write(`${formatUsage()}\n`);
+      return 1;
+    }
+
+    const facade = createFacade(facadeOptions);
+    try {
+      const result = facade.resolveContradiction(
+        parsed.key,
+        parsed.keepPreferenceId,
+        parsed.scopeRef,
+        parsed.resolutionNotes,
+      );
+      if (parsed.json) {
+        writeLine(io, JSON.stringify(result, null, 2));
+      } else {
+        writeLine(io, result.message);
+      }
+      return 0;
+    } finally {
+      facade.close();
+    }
+  }
+
+  if (parsed.command === 'refresh-page') {
+    if (!parsed.pageId) {
+      io.stderr.write('Missing value for --page-id\n');
+      io.stderr.write(`${formatUsage()}\n`);
+      return 1;
+    }
+
+    const facade = createFacade(facadeOptions);
+    try {
+      const result = facade.refreshPage(parsed.pageId);
+      if (parsed.json) {
+        writeLine(io, JSON.stringify(result, null, 2));
+      } else {
+        writeLine(io, result.message);
+      }
+      return result.status === 'ready' ? 0 : 1;
+    } finally {
+      facade.close();
+    }
+  }
+
   if (parsed.command === 'graph-query') {
     if (!parsed.entityId) {
       io.stderr.write('Missing value for --entity-id\n');

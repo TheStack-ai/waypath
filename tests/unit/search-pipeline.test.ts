@@ -1,5 +1,5 @@
 import { createTruthKernelStorage, ensureTruthKernelSeedData, type SqliteTruthKernelStorage } from '../../src/jarvis_fusion/truth-kernel/index.js';
-import { searchTruthKernel } from '../../src/archive-kernel/search/index.js';
+import { searchTruthKernel, queryTruthDirect } from '../../src/archive-kernel/search/index.js';
 import { rrfFusion } from '../../src/archive-kernel/search/rrf.js';
 import { dedupResults } from '../../src/archive-kernel/search/dedup.js';
 import { chunkText } from '../../src/archive-kernel/chunker/index.js';
@@ -189,6 +189,92 @@ export function testSearchEmptyQuery(): void {
   const store = createSeededStore();
   try {
     const results = searchTruthKernel('', { store });
+    if (results.length !== 0) throw new Error('Expected no results for empty query');
+  } finally {
+    store.close();
+  }
+}
+
+// --- Truth-Direct Query Tests ---
+
+export function testQueryTruthDirectReturnsCanonicalOnly(): void {
+  const store = createSeededStore();
+  try {
+    // Add a knowledge page and evidence bundle (derived data)
+    const ts = nowIso();
+    store.upsertKnowledgePage({
+      page: { page_id: 'page:test', page_type: 'topic_brief', title: 'SQLite Topic Brief', status: 'canonical' },
+      summary_markdown: 'SQLite is used throughout.',
+      linked_entity_ids: ['tool:sqlite'],
+      linked_decision_ids: [],
+      linked_evidence_bundle_ids: [],
+      updated_at: ts,
+    });
+    store.upsertEvidenceBundle({
+      bundle_id: 'bundle:test',
+      query: 'SQLite evidence',
+      generated_at: ts,
+      items: [{ evidence_id: 'ev:1', source_ref: 'test', title: 'SQLite Evidence', excerpt: 'Evidence about SQLite', observed_at: null, confidence: 0.8, metadata: {} }],
+    });
+
+    const results = queryTruthDirect('SQLite', { store });
+
+    // Should return canonical truth (entities, decisions, memories) but NOT knowledge pages or evidence bundles
+    const sourceTypes = new Set(results.map((r) => r.candidate.source_type));
+    if (sourceTypes.has('page')) throw new Error('queryTruthDirect should not return knowledge pages');
+    if (sourceTypes.has('evidence')) throw new Error('queryTruthDirect should not return evidence bundles');
+
+    // Should find SQLite entity and related decision
+    if (results.length === 0) throw new Error('Expected truth results for "SQLite"');
+    const hasSqlite = results.some((r) => r.candidate.id.includes('sqlite'));
+    if (!hasSqlite) throw new Error('Expected SQLite entity in truth-direct results');
+  } finally {
+    store.close();
+  }
+}
+
+export function testQueryTruthDirectNoRrf(): void {
+  const store = createSeededStore();
+  try {
+    const results = queryTruthDirect('SQLite local-first', { store });
+
+    // All results should have rrf_fused = 0 (no RRF applied)
+    for (const r of results) {
+      if (r.breakdown.rrf_fused !== 0) throw new Error('queryTruthDirect should not use RRF fusion');
+    }
+
+    // Score should be a direct combined score, not RRF-fused
+    if (results.length > 0 && results[0]!.score <= 0) {
+      throw new Error('Expected positive score for matching results');
+    }
+  } finally {
+    store.close();
+  }
+}
+
+export function testTruthFirstRecallSufficiency(): void {
+  const store = createSeededStore();
+  try {
+    // Query that should find enough truth results (>= 3)
+    const truthResults = queryTruthDirect('alpha', { store });
+
+    // 'alpha' matches project entity, and its scoped decisions/memories
+    if (truthResults.length < 1) throw new Error('Expected truth results for project "alpha"');
+
+    // Archive RRF should also work
+    const archiveResults = searchTruthKernel('alpha', { store });
+    if (archiveResults.length < truthResults.length) {
+      throw new Error('Archive RRF should return at least as many results as truth-direct');
+    }
+  } finally {
+    store.close();
+  }
+}
+
+export function testQueryTruthDirectEmptyQuery(): void {
+  const store = createSeededStore();
+  try {
+    const results = queryTruthDirect('', { store });
     if (results.length !== 0) throw new Error('Expected no results for empty query');
   } finally {
     store.close();

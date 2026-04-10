@@ -183,6 +183,23 @@ export interface SessionContextPack {
   related_pages: PageReference[];
 }
 
+export interface ResolveContradictionResult {
+  operation: 'resolve-contradiction';
+  status: 'ready';
+  message: string;
+  kept_preference_id: string;
+  resolved_count: number;
+}
+
+export interface RefreshPageResult {
+  operation: 'refresh-page';
+  status: 'ready' | 'missing';
+  message: string;
+  page_id: string;
+  previous_status: string;
+  new_status: string;
+}
+
 export type FacadeVerb =
   | 'session-start'
   | 'recall'
@@ -192,7 +209,9 @@ export type FacadeVerb =
   | 'review-queue'
   | 'inspect-page'
   | 'inspect-candidate'
-  | 'graph-query';
+  | 'graph-query'
+  | 'resolve-contradiction'
+  | 'refresh-page';
 
 export interface FacadeDescription {
   name: string;
@@ -354,6 +373,8 @@ export interface FacadeApi {
   inspectPage(pageId: string): InspectPageResult;
   inspectCandidate(candidateId: string): InspectCandidateResult;
   graphQuery(entityId: string, pattern?: GraphTraversalPattern): GraphQueryResult;
+  resolveContradiction(key: string, keepPreferenceId: string, scopeRef?: string, notes?: string): ResolveContradictionResult;
+  refreshPage(pageId: string): RefreshPageResult;
 }
 
 export interface SessionRuntime {

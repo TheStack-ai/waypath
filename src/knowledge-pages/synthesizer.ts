@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import type { SqliteTruthKernelStorage } from '../jarvis_fusion/truth-kernel/storage.js';
 import type { StoredKnowledgePage } from '../contracts/index.js';
 import type { KnowledgePageType } from '../jarvis_fusion/contracts.js';
@@ -6,6 +8,75 @@ import { expandGraphContext } from '../ontology-support/index.js';
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+// ── File-based page persistence ──
+
+/**
+ * Derive the knowledge/pages directory from the store's database path.
+ * Convention: <store_dir>/knowledge/pages/
+ */
+function pagesDirectory(store: SqliteTruthKernelStorage): string | null {
+  const dbPath = store.location;
+  if (!dbPath || dbPath === ':memory:') return null;
+  return join(dirname(dbPath), 'knowledge', 'pages');
+}
+
+function pageFileName(pageId: string): string {
+  return pageId.replace(/[:/]/g, '_') + '.md';
+}
+
+/**
+ * Write a knowledge page to the filesystem as a markdown file.
+ * The file contains YAML frontmatter with metadata + the markdown body.
+ */
+function writePageFile(store: SqliteTruthKernelStorage, page: StoredKnowledgePage): void {
+  const dir = pagesDirectory(store);
+  if (!dir) return; // in-memory store — skip file persistence
+
+  mkdirSync(dir, { recursive: true });
+  const filePath = join(dir, pageFileName(page.page.page_id));
+
+  const frontmatter = [
+    '---',
+    `page_id: ${page.page.page_id}`,
+    `page_type: ${page.page.page_type}`,
+    `title: "${page.page.title.replace(/"/g, '\\"')}"`,
+    `status: ${page.page.status}`,
+    `linked_entity_ids: [${page.linked_entity_ids.map((id) => `"${id}"`).join(', ')}]`,
+    `linked_decision_ids: [${page.linked_decision_ids.map((id) => `"${id}"`).join(', ')}]`,
+    `updated_at: ${page.updated_at}`,
+    '---',
+    '',
+  ].join('\n');
+
+  writeFileSync(filePath, frontmatter + page.summary_markdown);
+}
+
+/**
+ * Read a knowledge page markdown from the filesystem.
+ * Returns null if the file does not exist.
+ */
+/**
+ * Get the filesystem path for a knowledge page's markdown file.
+ * Returns null for in-memory stores.
+ */
+export function getPageFilePath(store: SqliteTruthKernelStorage, pageId: string): string | null {
+  const dir = pagesDirectory(store);
+  if (!dir) return null;
+  return join(dir, pageFileName(pageId));
+}
+
+function readPageFile(store: SqliteTruthKernelStorage, pageId: string): string | null {
+  const dir = pagesDirectory(store);
+  if (!dir) return null;
+  const filePath = join(dir, pageFileName(pageId));
+  if (!existsSync(filePath)) return null;
+
+  const content = readFileSync(filePath, 'utf8');
+  // Strip frontmatter to get markdown body
+  const match = /^---\n[\s\S]*?\n---\n\n?/u.exec(content);
+  return match ? content.slice(match[0].length) : content;
 }
 
 function uniqueStrings(values: readonly string[]): string[] {
@@ -332,6 +403,7 @@ function synthesizeSessionBrief(store: SqliteTruthKernelStorage, input: PageSynt
 
 /**
  * Refresh an existing knowledge page by re-synthesizing from current truth state.
+ * Updates both the file and DB (dual write).
  */
 export function refreshPage(store: SqliteTruthKernelStorage, pageId: string): PageRefreshResult {
   const existing = store.getKnowledgePage(pageId);
@@ -351,12 +423,14 @@ export function refreshPage(store: SqliteTruthKernelStorage, pageId: string): Pa
 
   const refreshed = synthesizePage(store, input);
 
-  // Update status to canonical
-  store.upsertKnowledgePage({
+  // Dual write: update DB status + regenerate file
+  const updated: StoredKnowledgePage = {
     ...refreshed,
     page: { ...refreshed.page, status: 'canonical' },
     updated_at: nowIso(),
-  });
+  };
+  store.upsertKnowledgePage(updated);
+  writePageFile(store, updated);
 
   return {
     page_id: pageId,
@@ -419,7 +493,10 @@ function buildPage(
     updated_at: nowIso(),
   };
 
+  // Dual write: DB (metadata) + file (canonical markdown surface)
   store.upsertKnowledgePage(page);
+  writePageFile(store, page);
+
   return store.getKnowledgePage(pageId) ?? page;
 }
 

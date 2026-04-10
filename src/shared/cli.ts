@@ -19,6 +19,10 @@ export interface CliArgs {
   notes?: string;
   entityId?: string;
   pattern?: string;
+  key?: string;
+  scopeRef?: string;
+  keepPreferenceId?: string;
+  resolutionNotes?: string;
   help: boolean;
 }
 
@@ -48,6 +52,10 @@ export function createCliArgs(argv: string[]): CliArgs {
     if (token === '--notes') { args.notes = readValue(values, ++index, '--notes'); continue; }
     if (token === '--entity-id') { args.entityId = readValue(values, ++index, '--entity-id'); continue; }
     if (token === '--pattern') { args.pattern = readValue(values, ++index, '--pattern'); continue; }
+    if (token === '--key') { args.key = readValue(values, ++index, '--key'); continue; }
+    if (token === '--scope-ref') { args.scopeRef = readValue(values, ++index, '--scope-ref'); continue; }
+    if (token === '--keep-preference-id') { args.keepPreferenceId = readValue(values, ++index, '--keep-preference-id'); continue; }
+    if (token === '--resolution-notes') { args.resolutionNotes = readValue(values, ++index, '--resolution-notes'); continue; }
     throw new Error(`Unknown CLI flag: ${token}`);
   }
 
@@ -77,6 +85,8 @@ export function formatUsage(): string {
     '  waypath import-seed [--project <name>] [--store-path <path>] [--json]',
     '  waypath import-local [--project <name>] [--store-path <path>] [--json]',
     '  waypath source-status [--json]',
+    '  waypath resolve-contradiction --key <key> --keep-preference-id <id> [--scope-ref <ref>] [--resolution-notes <text>] [--json]',
+    '  waypath refresh-page --page-id <id> [--json]',
     '  waypath --help',
   ].join('\n');
 }

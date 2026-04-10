@@ -1,5 +1,9 @@
+import { existsSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createTruthKernelStorage, ensureTruthKernelSeedData, type SqliteTruthKernelStorage } from '../../src/jarvis_fusion/truth-kernel/index.js';
-import { synthesizePage, refreshPage, markPagesStale } from '../../src/knowledge-pages/index.js';
+import { synthesizePage, refreshPage, markPagesStale, getPageFilePath } from '../../src/knowledge-pages/index.js';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -151,6 +155,60 @@ export function testEmptyStoreProducesValidPage(): void {
     const page = synthesizePage(store, { page_type: 'project_page', project: 'empty' });
     if (!page.summary_markdown.includes('empty')) throw new Error('Expected project name in markdown');
     if (page.page.page_type !== 'project_page') throw new Error('Expected project_page type');
+  } finally {
+    store.close();
+  }
+}
+
+export function testPageFilePersistence(): void {
+  const root = mkdtempSync(`${tmpdir()}/waypath-pages-`);
+  const dbPath = join(root, 'truth.db');
+  const store = createTruthKernelStorage(dbPath);
+  ensureTruthKernelSeedData(store, { project: 'filetest', objective: 'test file persistence', activeTask: 'write pages' });
+  try {
+    const page = synthesizePage(store, {
+      page_type: 'project_page',
+      project: 'filetest',
+      anchor_entity_id: 'project:filetest',
+    });
+
+    // File should be written
+    const filePath = getPageFilePath(store, page.page.page_id);
+    if (!filePath) throw new Error('Expected file path for file-based store');
+    if (!existsSync(filePath)) throw new Error(`Expected page file at ${filePath}`);
+
+    // DB should also have the page
+    const fromDb = store.getKnowledgePage(page.page.page_id);
+    if (!fromDb) throw new Error('Expected page in DB');
+
+    // Refresh should also update the file
+    const refreshResult = refreshPage(store, page.page.page_id);
+    if (!refreshResult.refreshed) throw new Error('Expected refresh to succeed');
+    if (refreshResult.new_status !== 'canonical') throw new Error('Expected canonical after refresh');
+
+    // File should still exist after refresh
+    if (!existsSync(filePath)) throw new Error('Expected page file to persist after refresh');
+  } finally {
+    store.close();
+  }
+}
+
+export function testInMemoryStoreSkipsFilePersistence(): void {
+  const store = createTruthKernelStorage(':memory:');
+  ensureTruthKernelSeedData(store, { project: 'memtest', objective: 'test', activeTask: 'test' });
+  try {
+    const page = synthesizePage(store, {
+      page_type: 'session_brief',
+      project: 'memtest',
+    });
+
+    // getPageFilePath should return null for in-memory stores
+    const filePath = getPageFilePath(store, page.page.page_id);
+    if (filePath !== null) throw new Error('Expected null file path for in-memory store');
+
+    // Page should still be in DB
+    const fromDb = store.getKnowledgePage(page.page.page_id);
+    if (!fromDb) throw new Error('Expected page in DB even for in-memory store');
   } finally {
     store.close();
   }

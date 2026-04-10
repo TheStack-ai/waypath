@@ -13,6 +13,9 @@ import {
   testReviewNotFound,
   testListPendingCandidates,
   testAcceptedPromotionMarksPageStale,
+  testSubmitWithEvidenceBundleLinkage,
+  testResolveContradictionSetsInactive,
+  testReviewWithPayloadRecordsProvenance,
 } from './unit/promotion-engine.test';
 import {
   testSynthesizeProjectPage,
@@ -23,6 +26,8 @@ import {
   testRefreshPage,
   testMarkPagesStale,
   testEmptyStoreProducesValidPage,
+  testPageFilePersistence,
+  testInMemoryStoreSkipsFilePersistence,
 } from './unit/knowledge-pages.test';
 import {
   testRrfFusionMergesLists,
@@ -39,6 +44,10 @@ import {
   testSearchTruthKernel,
   testSearchWithGraphScoring,
   testSearchEmptyQuery,
+  testQueryTruthDirectReturnsCanonicalOnly,
+  testQueryTruthDirectNoRrf,
+  testTruthFirstRecallSufficiency,
+  testQueryTruthDirectEmptyQuery,
 } from './unit/search-pipeline.test';
 import {
   testTraversalDepth1,
@@ -103,6 +112,9 @@ const tests: TestCase[] = [
   { name: 'promotion: not found', run: testReviewNotFound },
   { name: 'promotion: list pending', run: testListPendingCandidates },
   { name: 'promotion: accepted marks page stale', run: testAcceptedPromotionMarksPageStale },
+  { name: 'promotion: submit with evidence bundle linkage', run: testSubmitWithEvidenceBundleLinkage },
+  { name: 'promotion: resolve contradiction sets inactive', run: testResolveContradictionSetsInactive },
+  { name: 'promotion: review with payload records provenance', run: testReviewWithPayloadRecordsProvenance },
   { name: 'knowledge-pages: project page', run: testSynthesizeProjectPage },
   { name: 'knowledge-pages: entity page', run: testSynthesizeEntityPage },
   { name: 'knowledge-pages: decision page', run: testSynthesizeDecisionPage },
@@ -111,6 +123,8 @@ const tests: TestCase[] = [
   { name: 'knowledge-pages: refresh page', run: testRefreshPage },
   { name: 'knowledge-pages: mark stale', run: testMarkPagesStale },
   { name: 'knowledge-pages: empty store', run: testEmptyStoreProducesValidPage },
+  { name: 'knowledge-pages: file persistence', run: testPageFilePersistence },
+  { name: 'knowledge-pages: in-memory skips file', run: testInMemoryStoreSkipsFilePersistence },
   { name: 'search: RRF fusion merges lists', run: testRrfFusionMergesLists },
   { name: 'search: RRF score is rank-based', run: testRrfScoreIsRankBased },
   { name: 'search: dedup by ID', run: testDedupById },
@@ -125,6 +139,10 @@ const tests: TestCase[] = [
   { name: 'search: truth kernel pipeline', run: testSearchTruthKernel },
   { name: 'search: pipeline with graph scoring', run: testSearchWithGraphScoring },
   { name: 'search: empty query', run: testSearchEmptyQuery },
+  { name: 'search: truth-direct canonical only', run: testQueryTruthDirectReturnsCanonicalOnly },
+  { name: 'search: truth-direct no RRF', run: testQueryTruthDirectNoRrf },
+  { name: 'search: truth-first recall sufficiency', run: testTruthFirstRecallSufficiency },
+  { name: 'search: truth-direct empty query', run: testQueryTruthDirectEmptyQuery },
   { name: 'ontology: traversal depth 1', run: testTraversalDepth1 },
   { name: 'ontology: traversal depth 2', run: testTraversalDepth2 },
   { name: 'ontology: traversal depth 3', run: testTraversalDepth3 },

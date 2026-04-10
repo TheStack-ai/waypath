@@ -7,4 +7,5 @@ export {
   synthesizePage,
   refreshPage,
   markPagesStale,
+  getPageFilePath,
 } from './synthesizer.js';

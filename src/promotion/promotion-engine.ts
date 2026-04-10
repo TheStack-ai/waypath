@@ -9,6 +9,7 @@ import type {
   ContradictionResolution,
 } from './types.js';
 import type { TruthPromotionCandidateRecord } from '../jarvis_fusion/contracts.js';
+import { markPagesStale as markPagesStaleKnowledge } from '../knowledge-pages/index.js';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -388,22 +389,26 @@ export function reviewCandidate(
         }
 
         // Mark related pages stale:
-        // 1. Entity-ID-based (precise): for entity/decision creation via payload
-        const entityAffectedIds = affectedIdsFromSideEffects(sideEffects.filter(
+        // 1. Entity-ID + Decision-ID based (precise) via knowledge-pages module
+        const truthEffects = sideEffects.filter(
           (se): se is Extract<PromotionSideEffect, { kind: 'truth_created' | 'truth_updated' | 'truth_superseded' }> =>
             se.kind === 'truth_created' || se.kind === 'truth_updated' || se.kind === 'truth_superseded',
-        ));
-        const staledByEntityId = new Set(
-          entityAffectedIds.length > 0 ? store.markKnowledgePagesStale(entityAffectedIds) : [],
         );
-        for (const pageId of staledByEntityId) {
+        const entityAffectedIds = affectedIdsFromSideEffects(truthEffects);
+        const decisionAffectedIds = truthEffects
+          .filter((se) => se.kind === 'truth_created' || se.kind === 'truth_updated')
+          .filter((se) => se.object_type === 'decision')
+          .map((se) => se.object_id);
+        const staledByKnowledge = markPagesStaleKnowledge(store, entityAffectedIds, decisionAffectedIds);
+        const staledSet = new Set(staledByKnowledge);
+        for (const pageId of staledByKnowledge) {
           sideEffects.push({ kind: 'page_marked_stale', page_id: pageId });
         }
 
         // 2. Text-based (fallback): covers promoted_memory and other cases where no entity ID available
         const staledByText = markRelatedPagesStale(store, existing.subject, timestamp);
         for (const pageId of staledByText) {
-          if (!staledByEntityId.has(pageId)) {
+          if (!staledSet.has(pageId)) {
             sideEffects.push({ kind: 'page_marked_stale', page_id: pageId });
           }
         }
@@ -482,8 +487,9 @@ export function resolveContradiction(
       const prefId = String(row.preference_id);
       if (prefId === resolution.keep_preference_id) continue;
 
+      // Set conflicting preferences to 'inactive' (explicit resolution, not mere supersede)
       store.run(
-        `UPDATE preferences SET status = 'superseded', updated_at = :ts WHERE preference_id = :id`,
+        `UPDATE preferences SET status = 'inactive', updated_at = :ts WHERE preference_id = :id`,
         { ts: timestamp, id: prefId },
       );
       sideEffects.push({ kind: 'truth_superseded', old_id: prefId, new_id: resolution.keep_preference_id });

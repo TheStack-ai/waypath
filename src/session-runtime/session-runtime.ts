@@ -693,20 +693,26 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
         focusTokens,
       );
 
-      // Build related_pages from store (project-scoped pages + session brief)
+      // Build related_pages from store — graph-expanded entity matching + project scope
       const sessionBriefId = `page:session:${project}`;
-      const storedProjectPages = store.listKnowledgePages(5)
+      const graphEntityIdSet = new Set([
+        projectEntityId,
+        ...graphExpansion.expanded_entities.map((e) => e.entity_id),
+        ...rankedEntities.map((e) => e.entity_id),
+      ]);
+      const storedProjectPages = store.listKnowledgePages(15)
         .filter(
           (p) =>
-            p.linked_entity_ids.includes(projectEntityId) ||
-            p.page.page_type === 'project_page',
+            p.page.page_type === 'project_page' ||
+            p.linked_entity_ids.some((id) => graphEntityIdSet.has(id)),
         )
         .map((p) => ({
           page_id: p.page.page_id,
           page_type: p.page.page_type,
           title: p.page.title,
           status: p.page.status,
-        }));
+        }))
+        .slice(0, 8);
       const relatedPages = [
         {
           page_id: sessionBriefId,

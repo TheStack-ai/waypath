@@ -20,8 +20,8 @@ import {
 } from '../contracts';
 import { createSessionRuntime, type SessionRuntimeOptions } from '../session-runtime';
 import { buildLocalArchiveBundle } from '../jarvis_fusion/archive-provider.js';
-import { synthesizePage } from '../knowledge-pages/index.js';
-import { submitCandidate, reviewCandidate } from '../promotion/index.js';
+import { synthesizePage, refreshPage as refreshKnowledgePage } from '../knowledge-pages/index.js';
+import { submitCandidate, reviewCandidate, resolveContradiction as resolveContradictionEngine } from '../promotion/index.js';
 import { expandGraphContext, executePattern } from '../ontology-support/index.js';
 import { createTruthKernelStorage, defaultTruthKernelStoreLocation } from '../jarvis_fusion/truth-kernel/index.js';
 
@@ -40,7 +40,7 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
   const description: FacadeDescription = {
     name: 'waypath-facade',
     host_shims: ['codex'],
-    verbs: ['session-start', 'recall', 'page', 'promote', 'review', 'review-queue', 'inspect-page', 'inspect-candidate', 'graph-query'],
+    verbs: ['session-start', 'recall', 'page', 'promote', 'review', 'review-queue', 'inspect-page', 'inspect-candidate', 'graph-query', 'resolve-contradiction', 'refresh-page'],
     access_layer: 'operator-facing',
     session_runtime: 'local-first',
   };
@@ -228,6 +228,35 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
         status: 'ready',
         message: `Loaded promotion candidate ${candidateId}`,
         candidate,
+      };
+    },
+    resolveContradiction(key: string, keepPreferenceId: string, scopeRef?: string, notes?: string) {
+      const result = resolveContradictionEngine(store, {
+        key,
+        scope_ref: scopeRef ?? null,
+        keep_preference_id: keepPreferenceId,
+        resolution_notes: notes ?? null,
+      });
+      const resolvedCount = result.side_effects.filter((e) => e.kind === 'truth_superseded').length;
+      return {
+        operation: 'resolve-contradiction' as const,
+        status: 'ready' as const,
+        message: result.message,
+        kept_preference_id: keepPreferenceId,
+        resolved_count: resolvedCount,
+      };
+    },
+    refreshPage(pageId: string) {
+      const result = refreshKnowledgePage(store, pageId);
+      return {
+        operation: 'refresh-page' as const,
+        status: (result.refreshed ? 'ready' : 'missing') as 'ready' | 'missing',
+        message: result.refreshed
+          ? `Page ${pageId} refreshed: ${result.previous_status} → ${result.new_status}`
+          : `Page ${pageId} not found`,
+        page_id: pageId,
+        previous_status: result.previous_status,
+        new_status: result.new_status,
       };
     },
     graphQuery(entityId: string, pattern?: GraphTraversalPattern): GraphQueryResult {
