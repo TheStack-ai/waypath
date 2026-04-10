@@ -209,11 +209,11 @@ function shouldKeepMemory(description: string, content: string): boolean {
 }
 
 export function localJarvisReaderAvailable(): boolean {
-  return existsSync(getJarvisDbPath());
+  return getJarvisReaderProbe().available;
 }
 
 export function localJarvisBrainReaderAvailable(): boolean {
-  return existsSync(getJarvisBrainDbPath());
+  return getJarvisBrainReaderProbe().available;
 }
 
 export interface LocalSourceProbe {
@@ -221,11 +221,37 @@ export interface LocalSourceProbe {
   readonly available: boolean;
   readonly enabled: boolean;
   readonly path: string | null;
-  readonly adapter_status: 'ready' | 'probe_only' | 'missing';
+  readonly adapter_status: 'ready' | 'probe_only' | 'blocked' | 'missing';
 }
 
 export interface LocalSourceAdapterOptions {
   readonly enabled?: SourceAdapterEnabledMap;
+}
+
+function probeReadonlySqlite(path: string): { available: boolean; path: string | null; adapter_status: 'ready' | 'blocked' | 'missing' } {
+  if (!existsSync(path)) {
+    return { available: false, path: null, adapter_status: 'missing' };
+  }
+
+  try {
+    const db = openReadonlyDatabase(path);
+    try {
+      db.prepare('SELECT 1').get();
+    } finally {
+      db.close();
+    }
+    return { available: true, path, adapter_status: 'ready' };
+  } catch {
+    return { available: false, path, adapter_status: 'blocked' };
+  }
+}
+
+function getJarvisReaderProbe(): { available: boolean; path: string | null; adapter_status: 'ready' | 'blocked' | 'missing' } {
+  return probeReadonlySqlite(getJarvisDbPath());
+}
+
+function getJarvisBrainReaderProbe(): { available: boolean; path: string | null; adapter_status: 'ready' | 'blocked' | 'missing' } {
+  return probeReadonlySqlite(getJarvisBrainDbPath());
 }
 
 function isSourceAdapterEnabled(reader: string, options: LocalSourceAdapterOptions | undefined): boolean {
@@ -240,20 +266,22 @@ function getMemPalaceCandidatePaths(): readonly string[] {
 
 export function probeLocalSourceAdapters(options: LocalSourceAdapterOptions = {}): readonly LocalSourceProbe[] {
   const mempalacePath = getMemPalaceCandidatePaths().find((path) => existsSync(path)) ?? null;
+  const jarvisProbe = getJarvisReaderProbe();
+  const jarvisBrainProbe = getJarvisBrainReaderProbe();
   return [
     {
       reader: 'jarvis-memory-db',
-      available: localJarvisReaderAvailable(),
+      available: jarvisProbe.available,
       enabled: isSourceAdapterEnabled('jarvis-memory-db', options),
-      path: localJarvisReaderAvailable() ? getJarvisDbPath() : null,
-      adapter_status: localJarvisReaderAvailable() ? 'ready' : 'missing',
+      path: jarvisProbe.path,
+      adapter_status: jarvisProbe.adapter_status,
     },
     {
       reader: 'jarvis-brain-db',
-      available: localJarvisBrainReaderAvailable(),
+      available: jarvisBrainProbe.available,
       enabled: isSourceAdapterEnabled('jarvis-brain-db', options),
-      path: localJarvisBrainReaderAvailable() ? getJarvisBrainDbPath() : null,
-      adapter_status: localJarvisBrainReaderAvailable() ? 'ready' : 'missing',
+      path: jarvisBrainProbe.path,
+      adapter_status: jarvisBrainProbe.adapter_status,
     },
     {
       reader: 'mempalace',

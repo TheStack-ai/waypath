@@ -2,8 +2,8 @@
   "name": "waypath",
   "version": "0.1.0-rc.0",
   "description": "Local-first external brain CLI for Waypath host shims and truth workflows.",
+  "type": "module",
   "main": "dist/src/index.js",
-  "types": "dist/src/index.d.ts",
   "files": [
     "dist/src/**",
     "README.md"
@@ -12,8 +12,8 @@
     "node": ">=25.0.0"
   },
   "scripts": {
-    "build": "npx --yes --package typescript tsc -p tsconfig.json",
-    "typecheck": "npx --yes --package typescript tsc -p tsconfig.json --noEmit",
+    "build": "node scripts/build.mjs",
+    "typecheck": "node scripts/build.mjs --check",
     "test": "npm run build && node dist/tests/run-tests.js",
     "start": "npm run build && node dist/src/cli.js",
     "codex": "npm run build && node dist/src/cli.js codex --json",

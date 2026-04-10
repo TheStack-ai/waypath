@@ -177,7 +177,7 @@ export function runCli(argv: string[], io: CliIo): number {
       for (const source of result.sources) {
         writeLine(
           io,
-          `${source.reader}: ${source.enabled ? 'enabled' : 'disabled'} / ${source.available ? source.adapter_status : 'missing'}${source.path ? ` (${source.path})` : ''}`,
+          `${source.reader}: ${source.enabled ? 'enabled' : 'disabled'} / ${source.adapter_status}${source.path ? ` (${source.path})` : ''}`,
         );
       }
     }

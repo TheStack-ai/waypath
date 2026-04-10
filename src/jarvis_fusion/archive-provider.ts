@@ -218,6 +218,19 @@ function sortRankedItems(items: readonly RankedEvidenceItem[]): EvidenceItem[] {
     .map((entry) => entry.item);
 }
 
+function dedupEvidenceItems(items: readonly EvidenceItem[]): EvidenceItem[] {
+  const seen = new Set<string>();
+  const deduped: EvidenceItem[] = [];
+
+  for (const item of items) {
+    if (seen.has(item.evidence_id)) continue;
+    seen.add(item.evidence_id);
+    deduped.push(item);
+  }
+
+  return deduped;
+}
+
 function safeParseState(stateJson: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(stateJson);
@@ -324,7 +337,7 @@ export function buildLocalArchiveBundle(
     bundle_id: makeBundleId(normalizedQuery),
     query: normalizedQuery,
     generated_at: nowIso(),
-    items: pipelineItems.slice(0, 8),
+    items: dedupEvidenceItems(pipelineItems).slice(0, 8),
   };
 }
 

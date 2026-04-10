@@ -183,6 +183,7 @@ export function runImportLocalCliIntegrationTest(): void {
   const root = mkdtempSync(`${tmpdir()}/waypath-import-local-`);
   const jarvisDbPath = join(root, 'jarvis.db');
   const jarvisBrainDbPath = join(root, 'brain.db');
+  const blockedJarvisPath = root;
   const truthDbPath = join(root, 'truth.db');
   const configPath = join(root, 'config.toml');
 
@@ -244,6 +245,28 @@ export function runImportLocalCliIntegrationTest(): void {
     assertEqual(filteredResult.counts.decisions, 1);
     assertEqual(filteredResult.counts.preferences, 1);
     assertEqual(filteredResult.counts.promoted_memories, 1);
+
+    delete process.env.WAYPATH_CONFIG_PATH;
+    process.env.JARVIS_FUSION_JARVIS_DB_PATH = blockedJarvisPath;
+
+    const degradedCapture = captureIo();
+    const degradedStorePath = join(root, 'truth-blocked.db');
+    assertEqual(
+      runCli(['import-local', '--json', '--project', 'fixture-project', '--store-path', degradedStorePath], degradedCapture.io),
+      0,
+    );
+    const degradedResult = JSON.parse(degradedCapture.stdout.join('')) as {
+      readers: string[];
+      counts: { entities: number; relationships: number; decisions: number; preferences: number; promoted_memories: number; promoted_candidates: number };
+    };
+    assertEqual(degradedResult.readers.includes('jarvis-memory-db'), false);
+    assertEqual(degradedResult.readers.includes('jarvis-brain-db'), true);
+    assertEqual(degradedResult.counts.entities, 3);
+    assertEqual(degradedResult.counts.relationships, 2);
+    assertEqual(degradedResult.counts.decisions, 0);
+    assertEqual(degradedResult.counts.preferences, 0);
+    assertEqual(degradedResult.counts.promoted_memories, 1);
+    assertEqual(degradedResult.counts.promoted_candidates, 0);
   } finally {
     if (prevJarvis === undefined) {
       delete process.env.JARVIS_FUSION_JARVIS_DB_PATH;
@@ -267,6 +290,7 @@ export function runSourceStatusCliIntegrationTest(): void {
   const root = mkdtempSync(`${tmpdir()}/waypath-source-status-`);
   const configPath = join(root, 'config.toml');
   const prevConfigPath = process.env.WAYPATH_CONFIG_PATH;
+  const prevJarvis = process.env.JARVIS_FUSION_JARVIS_DB_PATH;
   writeFileSync(
     configPath,
     [
@@ -276,6 +300,7 @@ export function runSourceStatusCliIntegrationTest(): void {
     ].join('\n'),
   );
   process.env.WAYPATH_CONFIG_PATH = configPath;
+  process.env.JARVIS_FUSION_JARVIS_DB_PATH = root;
 
   const captured = captureIo();
   try {
@@ -286,7 +311,10 @@ export function runSourceStatusCliIntegrationTest(): void {
       sources: { reader: string; adapter_status: string; enabled: boolean }[];
     };
     assertEqual(result.status, 'ready');
-    assert(result.sources.some((source) => source.reader === 'jarvis-memory-db'), 'expected jarvis reader probe');
+    assert(
+      result.sources.some((source) => source.reader === 'jarvis-memory-db' && source.adapter_status === 'blocked'),
+      'expected jarvis reader probe to report blocked path',
+    );
     assert(
       result.sources.some((source) => source.reader === 'jarvis-brain-db' && source.enabled === false),
       'expected jarvis brain reader to reflect disabled config',
@@ -297,6 +325,11 @@ export function runSourceStatusCliIntegrationTest(): void {
       delete process.env.WAYPATH_CONFIG_PATH;
     } else {
       process.env.WAYPATH_CONFIG_PATH = prevConfigPath;
+    }
+    if (prevJarvis === undefined) {
+      delete process.env.JARVIS_FUSION_JARVIS_DB_PATH;
+    } else {
+      process.env.JARVIS_FUSION_JARVIS_DB_PATH = prevJarvis;
     }
   }
 }

@@ -6,3 +6,4 @@
 
 dist/
 .waypath/
+.npm-cache/

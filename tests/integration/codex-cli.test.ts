@@ -93,7 +93,7 @@ export function runRecallCliIntegrationTest(): void {
   assertEqual(exitCode, 0);
   const result = JSON.parse(captured.stdout.join('')) as {
     status: string;
-    bundle?: { bundle_id: string; items: { title: string }[] };
+    bundle?: { bundle_id: string; items: { title: string; evidence_id: string }[] };
   };
   assertEqual(result.status, 'ready');
   assert((result.bundle?.items.length ?? 0) > 0, 'expected recall bundle items');
@@ -101,6 +101,8 @@ export function runRecallCliIntegrationTest(): void {
     result.bundle?.items.some((item) => item.title.includes('Decision: Keep source readers read-only')),
     'expected truth-backed recall evidence',
   );
+  const evidenceIds = new Set(result.bundle?.items.map((item) => item.evidence_id));
+  assertEqual(evidenceIds.size, result.bundle?.items.length ?? 0);
   const store = createTruthKernelStorage(storePath);
   assert(store.getEvidenceBundle(result.bundle!.bundle_id)?.items.length, 'expected persisted recall evidence bundle');
   store.close();

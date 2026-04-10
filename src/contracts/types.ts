@@ -163,7 +163,7 @@ export interface LocalSourceStatusItem {
   available: boolean;
   enabled: boolean;
   path: string | null;
-  adapter_status: 'ready' | 'probe_only' | 'missing';
+  adapter_status: 'ready' | 'probe_only' | 'blocked' | 'missing';
   source_anchor?: SourceAnchor | null;
 }
 
