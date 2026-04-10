@@ -5,6 +5,7 @@ import type { StoredKnowledgePage } from '../contracts/index.js';
 import type { KnowledgePageType } from '../jarvis_fusion/contracts.js';
 import type { PageSynthesisInput, PageRefreshResult } from './types.js';
 import { expandGraphContext } from '../ontology-support/index.js';
+import { createJcpLiveReader } from '../adapters/jcp/index.js';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -83,12 +84,81 @@ function uniqueStrings(values: readonly string[]): string[] {
   return [...new Set(values.map((v) => v.trim()).filter((v) => v.length > 0))];
 }
 
+function normalizeText(value: string | null | undefined): string {
+  return (value ?? '').replace(/\s+/gu, ' ').trim();
+}
+
 function bulletSection(title: string, items: readonly string[]): string[] {
   return [
     `## ${title}`,
     ...(items.length > 0 ? items : ['- none']),
     '',
   ];
+}
+
+function pageIdForEntity(entityId: string): string {
+  return `page:entity:${entityId}`;
+}
+
+function pageIdForDecision(decisionId: string): string {
+  return `page:decision:${decisionId}`;
+}
+
+function crossReferenceSection(items: readonly string[]): string[] {
+  return bulletSection('Cross References', items);
+}
+
+function buildJcpProjectContext(projectName: string): {
+  readonly decisions: readonly string[];
+  readonly memories: readonly string[];
+} {
+  const reader = createJcpLiveReader();
+  if (!reader.health().ok) {
+    return { decisions: [], memories: [] };
+  }
+
+  const decisions = reader
+    .searchDecisions(projectName, 5)
+    .map((decision) => `- [source_system=jarvis-memory-db] **${decision.decision}** — ${decision.reasoning}`);
+  const memories = reader
+    .searchMemories(projectName, 5)
+    .map((memory) => `- [source_system=jarvis-memory-db] ${normalizeText(memory.description) || normalizeText(memory.content).slice(0, 180)}`);
+
+  return { decisions, memories };
+}
+
+function relatedBundleItems(
+  store: SqliteTruthKernelStorage,
+  matcher: (page: StoredKnowledgePage | null, item: { source_ref: string; title: string; excerpt: string }) => boolean,
+  input: PageSynthesisInput,
+): readonly StoredKnowledgePage[] {
+  const linkedBundleIds = new Set(input.linked_evidence_bundle_ids ?? []);
+  return store
+    .listEvidenceBundles(10)
+    .filter((bundle) =>
+      linkedBundleIds.has(bundle.bundle_id) ||
+      bundle.items.some((item) => matcher(null, item)),
+    )
+    .map((bundle) => ({
+      page: { page_id: bundle.bundle_id, page_type: 'topic_brief', title: bundle.query, status: 'canonical' },
+      summary_markdown: '',
+      linked_entity_ids: [],
+      linked_decision_ids: [],
+      linked_evidence_bundle_ids: [bundle.bundle_id],
+      updated_at: bundle.generated_at,
+    }));
+}
+
+function buildBundleEvidenceSection(
+  store: SqliteTruthKernelStorage,
+  bundleIds: readonly string[],
+): string[] {
+  const items = bundleIds.flatMap((bundleId) =>
+    (store.getEvidenceBundle(bundleId)?.items ?? [])
+      .slice(0, 3)
+      .map((item) => `- ${item.title}: ${item.excerpt}`),
+  );
+  return items.length > 0 ? bulletSection('Evidence', items) : [];
 }
 
 /**
@@ -143,6 +213,7 @@ function synthesizeProjectPage(store: SqliteTruthKernelStorage, input: PageSynth
   const stateJson = entity ? safeParseJson(entity.state_json) : {};
   const objective = stateJson.objective ?? '';
   const activeTask = stateJson.activeTask ?? '';
+  const jcpContext = buildJcpProjectContext(projectName);
 
   // Evidence bundles related to this project
   const evidenceBundles = store.listEvidenceBundles(5);
@@ -157,7 +228,7 @@ function synthesizeProjectPage(store: SqliteTruthKernelStorage, input: PageSynth
   // Entity page cross-reference links (entities found via graph expansion)
   const entityPageLinks = graphEntities
     .slice(0, 5)
-    .map((e) => `- [${e.name}](page:entity:${e.entity_id})`);
+    .map((e) => `- [${e.name}](${pageIdForEntity(e.entity_id)})`);
 
   // Use graph-expanded relationships for fuller picture
   const allRelationships = [
@@ -175,10 +246,16 @@ function synthesizeProjectPage(store: SqliteTruthKernelStorage, input: PageSynth
     ...(objective ? [`- **Objective:** ${objective}`] : []),
     ...(activeTask ? [`- **Active Task:** ${activeTask}`] : []),
     '',
-    ...bulletSection('Decisions', decisions.map((d) => `- **${d.title}** — ${d.statement}`)),
+    ...bulletSection('Decisions', [
+      ...decisions.map((d) => `- **${d.title}** — ${d.statement}`),
+      ...jcpContext.decisions,
+    ]),
     ...bulletSection('Preferences', preferences.map((p) => `- ${p.key}=${p.value} (${p.strength})`)),
     ...bulletSection('Related Entities', relatedEntities.map((e) => `- **${e.name}** (${e.entity_type}) — ${e.summary}`)),
-    ...bulletSection('Promoted Memories', memories.map((m) => `- ${m.summary}`)),
+    ...bulletSection('Promoted Memories', [
+      ...memories.map((m) => `- ${m.summary}`),
+      ...jcpContext.memories,
+    ]),
     ...bulletSection('Relationships', allRelationships.slice(0, 20).map((r) => {
       const fromName = store.getEntity(r.from_entity_id)?.name ?? r.from_entity_id;
       const toName = store.getEntity(r.to_entity_id)?.name ?? r.to_entity_id;
@@ -186,6 +263,10 @@ function synthesizeProjectPage(store: SqliteTruthKernelStorage, input: PageSynth
     })),
     ...(entityPageLinks.length > 0 ? ['## Entity Pages', ...entityPageLinks, ''] : []),
     ...(relatedBundles.length > 0 ? bulletSection('Evidence', relatedBundles.flatMap((b) => b.items.slice(0, 2).map((item) => `- ${item.title}: ${item.excerpt}`))) : []),
+    ...crossReferenceSection(uniqueStrings([
+      ...relatedEntityIds.map((id) => `- [${store.getEntity(id)?.name ?? id}](${pageIdForEntity(id)})`),
+      ...decisions.map((decision) => `- [${decision.title}](${pageIdForDecision(decision.decision_id)})`),
+    ])),
   ];
 
   return buildPage(
@@ -232,6 +313,8 @@ function synthesizeEntityPage(store: SqliteTruthKernelStorage, input: PageSynthe
   );
 
   const allLinkedDecisions = [...decisions, ...graphDecisions];
+  const relatedEntityLinks = graphEntities.map((related) => `- [${related.name}](${pageIdForEntity(related.entity_id)})`);
+  const decisionLinks = allLinkedDecisions.map((linkedDecision) => `- [${linkedDecision.title}](${pageIdForDecision(linkedDecision.decision_id)})`);
 
   const lines = [
     `# ${entityName}`,
@@ -250,14 +333,18 @@ function synthesizeEntityPage(store: SqliteTruthKernelStorage, input: PageSynthe
     ...(graphEntities.length > 0 ? bulletSection('Related Entities', graphEntities.map((e) => `- **${e.name}** (${e.entity_type}) — ${e.summary}`)) : []),
     ...(graphDecisions.length > 0 ? [
       '## Related Decision Pages',
-      ...graphDecisions.map((d) => `- [Decision: ${d.title}](page:decision:${d.decision_id})`),
+      ...graphDecisions.map((d) => `- [Decision: ${d.title}](${pageIdForDecision(d.decision_id)})`),
       '',
     ] : []),
     ...(relatedBundles.length > 0 ? bulletSection('Evidence', relatedBundles.flatMap((b) => b.items.slice(0, 2).map((item) => `- ${item.title}: ${item.excerpt}`))) : []),
+    ...crossReferenceSection(uniqueStrings([
+      ...relatedEntityLinks,
+      ...decisionLinks,
+    ])),
   ];
 
   return buildPage(
-    `page:entity:${input.subject ?? entityId}`,
+    pageIdForEntity(entityId),
     'entity_page',
     `${entityName} — Entity Page`,
     lines,
@@ -290,6 +377,13 @@ function synthesizeDecisionPage(store: SqliteTruthKernelStorage, input: PageSynt
   );
 
   const linkedEntityIds = scopeEntityId ? [scopeEntityId] : [];
+  const relatedBundles = store.listEvidenceBundles(8).filter((bundle) =>
+    (input.linked_evidence_bundle_ids ?? []).includes(bundle.bundle_id) ||
+    bundle.items.some((item) =>
+      item.source_ref.includes(decisionId) ||
+      item.title.toLowerCase().includes(title.toLowerCase()),
+    ),
+  );
 
   const lines = [
     `# ${title}`,
@@ -302,16 +396,21 @@ function synthesizeDecisionPage(store: SqliteTruthKernelStorage, input: PageSynt
     '',
     ...(scopeEntity ? bulletSection('Scope Entity', [`- **${scopeEntity.name}** — ${scopeEntity.summary}`]) : []),
     ...(relatedDecisions.length > 0 ? bulletSection('Related Decisions', relatedDecisions.map((d) => `- **${d.title}** — ${d.statement}`)) : []),
+    ...(relatedBundles.length > 0 ? bulletSection('Evidence', relatedBundles.flatMap((bundle) => bundle.items.slice(0, 3).map((item) => `- ${item.title}: ${item.excerpt}`))) : []),
+    ...crossReferenceSection(uniqueStrings([
+      ...(scopeEntity ? [`- [${scopeEntity.name}](${pageIdForEntity(scopeEntity.entity_id)})`] : []),
+      ...relatedDecisions.map((relatedDecision) => `- [${relatedDecision.title}](${pageIdForDecision(relatedDecision.decision_id)})`),
+    ])),
   ];
 
   return buildPage(
-    `page:decision:${input.subject ?? decisionId}`,
+    pageIdForDecision(decisionId),
     'decision_page',
     `${title} — Decision Page`,
     lines,
     linkedEntityIds,
     [decisionId, ...relatedDecisions.map((d) => d.decision_id)],
-    [],
+    relatedBundles.map((bundle) => bundle.bundle_id),
     store,
   );
 }
@@ -341,6 +440,10 @@ function synthesizeTopicBrief(store: SqliteTruthKernelStorage, input: PageSynthe
     ...bulletSection('Related Entities', entities.map((e) => `- **${e.name}** (${e.entity_type}) — ${e.summary}`)),
     ...bulletSection('Related Decisions', decisions.map((d) => `- **${d.title}** — ${d.statement}`)),
     ...bulletSection('Related Memories', memories.map((m) => `- ${m.summary}`)),
+    ...crossReferenceSection(uniqueStrings([
+      ...entities.map((entity) => `- [${entity.name}](${pageIdForEntity(entity.entity_id)})`),
+      ...decisions.map((decision) => `- [${decision.title}](${pageIdForDecision(decision.decision_id)})`),
+    ])),
   ];
 
   return buildPage(
@@ -382,6 +485,10 @@ function synthesizeSessionBrief(store: SqliteTruthKernelStorage, input: PageSynt
       const toName = store.getEntity(r.to_entity_id)?.name ?? r.to_entity_id;
       return `- ${fromName} —[${r.relation_type}]→ ${toName}`;
     })),
+    ...crossReferenceSection(uniqueStrings([
+      `- [${project}](${pageIdForEntity(projectEntityId)})`,
+      ...decisions.map((decision) => `- [${decision.title}](${pageIdForDecision(decision.decision_id)})`),
+    ])),
   ];
 
   const relatedEntityIds = uniqueStrings([
@@ -419,6 +526,7 @@ export function refreshPage(store: SqliteTruthKernelStorage, pageId: string): Pa
     subject: existing.page.title.split(' — ')[0]?.replace(/ session brief$/i, '') ?? undefined,
     anchor_entity_id: existing.linked_entity_ids[0] ?? undefined,
     anchor_decision_id: existing.linked_decision_ids[0] ?? undefined,
+    linked_evidence_bundle_ids: existing.linked_evidence_bundle_ids,
   };
 
   const refreshed = synthesizePage(store, input);

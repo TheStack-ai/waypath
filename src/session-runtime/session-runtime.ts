@@ -17,6 +17,7 @@ import {
 } from '../jarvis_fusion/truth-kernel/index.js';
 import { createRetrievalStrategy } from '../archive-kernel/retrieval/index.js';
 import { expandGraphContext } from '../ontology-support/index.js';
+import { createJcpLiveReader, type JcpLiveReader } from '../adapters/jcp/index.js';
 import type {
   TruthDecisionRecord,
   TruthEntityRecord,
@@ -36,6 +37,7 @@ export interface SessionRuntimeOptions {
   readonly autoSeed?: boolean;
   readonly recallWeights?: RecallWeightOverrides;
   readonly reviewQueueLimit?: number;
+  readonly jcpLiveReader?: JcpLiveReader;
 }
 
 function normalizeList(values: readonly string[] | undefined): string[] {
@@ -53,6 +55,11 @@ interface GraphRelationshipRow {
 interface ScoredValue<T> {
   readonly value: T;
   readonly score: number;
+}
+
+interface JcpRuntimeContext {
+  readonly taggedDecisions: readonly string[];
+  readonly taggedEntities: readonly string[];
 }
 
 function dedupeBy<T>(values: readonly T[], getKey: (value: T) => string): T[] {
@@ -599,6 +606,35 @@ function buildFocusTokens(project: string, objective: string, activeTask: string
     .filter((token) => token.length > 0);
 }
 
+function buildJcpRuntimeContext(
+  reader: JcpLiveReader | undefined,
+  project: string,
+  focusTokens: readonly string[],
+): JcpRuntimeContext {
+  if (!reader || !reader.health().ok) {
+    return { taggedDecisions: [], taggedEntities: [] };
+  }
+
+  const projectQuery = [project, ...focusTokens.slice(0, 4)].join(' ').trim();
+  const entities = reader.searchEntities(projectQuery, 6);
+  const decisions = reader.searchDecisions(project, 6);
+  const relatedEntities = reader.getRelationships(
+    entities.map((entity) => entity.id),
+    8,
+  )
+    .flatMap((relationship) => [relationship.subject_id, relationship.object_id])
+    .map((entityId) => reader.getEntityById(entityId))
+    .filter((entity): entity is NonNullable<typeof entity> => entity !== null);
+
+  return {
+    taggedDecisions: decisions.map((decision) => `${decision.decision} [source_system=jarvis-memory-db]`),
+    taggedEntities: uniqueStrings(
+      [...entities, ...relatedEntities]
+        .map((entity) => `${entity.name} [source_system=jarvis-memory-db]`),
+    ),
+  };
+}
+
 export function createSessionRuntime(options: SessionRuntimeOptions = {}): SessionRuntime {
   const store = options.store ?? createTruthKernelStorage(options.storePath ?? defaultTruthKernelStoreLocation());
   const reviewQueueLimit = options.reviewQueueLimit ?? 8;
@@ -611,6 +647,11 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
       const projectEntityId = `project:${project}`;
       const seedEntities = normalizeList(input.seedEntities);
       const focusTokens = buildFocusTokens(project, objective, activeTask);
+      const jcpRuntimeContext = buildJcpRuntimeContext(
+        options.jcpLiveReader ?? createJcpLiveReader(),
+        project,
+        focusTokens,
+      );
       const retrievalStrategy = createRetrievalStrategy(
         {
           query: focusTokens.join(' '),
@@ -737,9 +778,15 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
           activeTask,
         },
         truth_highlights: {
-          decisions: allDecisions.slice(0, 6).map((decision) => decision.title),
+          decisions: uniqueStrings([
+            ...allDecisions.slice(0, 6).map((decision) => decision.title),
+            ...jcpRuntimeContext.taggedDecisions,
+          ]),
           preferences: rankedPreferences.slice(0, 6).map((preference) => `${preference.key}=${preference.value}`),
-          entities: relatedEntityNames.slice(0, 8),
+          entities: uniqueStrings([
+            ...relatedEntityNames.slice(0, 8),
+            ...jcpRuntimeContext.taggedEntities,
+          ]),
           promoted_memories: rankedPromotedMemories.slice(0, 6).map((memory) => memory.summary),
         },
         graph_context: {

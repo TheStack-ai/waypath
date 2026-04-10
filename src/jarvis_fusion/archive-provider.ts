@@ -3,8 +3,10 @@ import type {
   EvidenceItem,
   RecallWeightOverrides,
 } from '../contracts/index.js';
-import { createRetrievalStrategy } from '../archive-kernel/retrieval/index.js';
-import { queryTruthDirect, searchTruthKernel } from '../archive-kernel/search/index.js';
+import { queryTruthDirect, searchTruthKernel, type RankedList } from '../archive-kernel/search/index.js';
+import type { SearchCandidate } from '../archive-kernel/search/index.js';
+import { rrfFusion } from '../archive-kernel/search/rrf.js';
+import { createJcpLiveReader, type JcpLiveReader } from '../adapters/jcp/index.js';
 import type {
   TruthDecisionRecord,
   TruthEntityRecord,
@@ -37,13 +39,9 @@ export interface ArchiveProvider {
 
 type ArchiveRecordKind = 'entity' | 'decision' | 'preference' | 'promoted_memory';
 
-interface RankedEvidenceItem {
-  readonly item: EvidenceItem;
-  readonly score: number;
-}
-
 export interface LocalArchiveRuntimeOptions {
   readonly weights?: RecallWeightOverrides;
+  readonly jcpLiveReader?: JcpLiveReader;
 }
 
 function nowIso(): string {
@@ -57,11 +55,6 @@ function slugify(value: string): string {
 function metadataStringValue(metadata: Record<string, unknown>, key: string): string | null {
   const value = metadata[key];
   return typeof value === 'string' ? value : null;
-}
-
-function metadataNumberValue(metadata: Record<string, unknown>, key: string): number | null {
-  const value = metadata[key];
-  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function toItem(
@@ -125,6 +118,7 @@ function mapDecisionEvidence(
       source_system: provenanceRecord?.source_system ?? 'truth-kernel',
       source_kind: provenanceRecord?.source_kind ?? 'decision',
       source_ref: provenanceRecord?.source_ref ?? `truth:${decision.decision_id}`,
+      decision_id: decision.decision_id,
       scope_entity_id: decision.scope_entity_id,
     },
   );
@@ -146,6 +140,7 @@ function mapPreferenceEvidence(
       source_system: provenanceRecord?.source_system ?? 'truth-kernel',
       source_kind: provenanceRecord?.source_kind ?? 'preference',
       source_ref: provenanceRecord?.source_ref ?? `truth:${preference.preference_id}`,
+      preference_id: preference.preference_id,
       subject_ref: preference.subject_ref,
     },
   );
@@ -167,6 +162,7 @@ function mapMemoryEvidence(
       source_system: provenanceRecord?.source_system ?? 'truth-kernel',
       source_kind: provenanceRecord?.source_kind ?? memory.memory_type,
       source_ref: provenanceRecord?.source_ref ?? `truth:${memory.memory_id}`,
+      memory_id: memory.memory_id,
       subject_entity_id: memory.subject_entity_id,
       access_tier: memory.access_tier,
     },
@@ -204,20 +200,6 @@ function passesFilters(item: EvidenceItem, filters: ArchiveSearchFilters | undef
   return true;
 }
 
-function sortRankedItems(items: readonly RankedEvidenceItem[]): EvidenceItem[] {
-  return [...items]
-    .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score;
-      }
-
-      const rightObserved = right.item.observed_at ?? '';
-      const leftObserved = left.item.observed_at ?? '';
-      return rightObserved.localeCompare(leftObserved);
-    })
-    .map((entry) => entry.item);
-}
-
 function dedupEvidenceItems(items: readonly EvidenceItem[]): EvidenceItem[] {
   const seen = new Set<string>();
   const deduped: EvidenceItem[] = [];
@@ -244,6 +226,110 @@ function safeParseState(stateJson: string): Record<string, unknown> {
 
 function makeBundleId(query: string): string {
   return `bundle:truth:${slugify(query)}:${nowIso()}`;
+}
+
+function buildEvidenceLookup(items: readonly EvidenceItem[]): ReadonlyMap<string, EvidenceItem> {
+  const lookup = new Map<string, EvidenceItem>();
+  for (const item of items) {
+    const metadata = item.metadata as Record<string, unknown>;
+    const candidateId =
+      (typeof metadata.entity_id === 'string' && metadata.entity_id)
+      || (typeof metadata.decision_id === 'string' && metadata.decision_id)
+      || (typeof metadata.preference_id === 'string' && metadata.preference_id)
+      || (typeof metadata.memory_id === 'string' && metadata.memory_id);
+    if (candidateId) {
+      lookup.set(candidateId, item);
+    }
+  }
+  return lookup;
+}
+
+function toJcpMemoryCandidate(memory: ReturnType<JcpLiveReader['searchMemories']>[number]): SearchCandidate {
+  return {
+    id: `jcp:memory:${memory.id}`,
+    title: memory.description ?? `JCP memory ${memory.id}`,
+    content: `${memory.description ?? ''}\n${memory.content}`.trim(),
+    source_type: 'memory',
+    source_system: 'jarvis-memory-db',
+    source_kind: memory.memory_type || 'memory',
+    confidence: memory.confidence,
+    graph_depth: null,
+    graph_weight: null,
+    metadata: {
+      raw_id: memory.id,
+      source_system: 'jarvis-memory-db',
+      source_kind: memory.memory_type || 'memory',
+      source_ref: `jarvis-memory-db:memory:${memory.id}`,
+      memory_type: memory.memory_type,
+      access_tier: memory.access_tier,
+      source: memory.source,
+    },
+  };
+}
+
+function toJcpEntityCandidate(entity: ReturnType<JcpLiveReader['searchEntities']>[number]): SearchCandidate {
+  return {
+    id: `jcp:entity:${entity.id}`,
+    title: entity.name,
+    content: `${entity.name} (${entity.entity_type})\n${entity.properties ?? ''}`.trim(),
+    source_type: 'entity',
+    source_system: 'jarvis-memory-db',
+    source_kind: entity.entity_type || 'entity',
+    confidence: entity.confidence,
+    graph_depth: null,
+    graph_weight: null,
+    metadata: {
+      raw_id: entity.id,
+      source_system: 'jarvis-memory-db',
+      source_kind: entity.entity_type || 'entity',
+      source_ref: `jarvis-memory-db:entity:${entity.id}`,
+      entity_type: entity.entity_type,
+      properties: entity.properties,
+    },
+  };
+}
+
+function toCandidateEvidenceItem(candidate: SearchCandidate): EvidenceItem {
+  return {
+    evidence_id: `evidence:${candidate.source_type}:${candidate.id}`,
+    source_ref: typeof candidate.metadata.source_ref === 'string'
+      ? candidate.metadata.source_ref
+      : `${candidate.source_system}:${candidate.id}`,
+    title: candidate.title,
+    excerpt: candidate.content,
+    observed_at: null,
+    confidence: candidate.confidence,
+    metadata: candidate.metadata as Record<string, unknown>,
+  };
+}
+
+function buildJcpRankedLists(
+  query: string,
+  reader: JcpLiveReader | undefined,
+): {
+  readonly rankedLists: readonly RankedList[];
+  readonly evidenceByCandidateId: ReadonlyMap<string, EvidenceItem>;
+} {
+  if (!reader || !reader.health().ok) {
+    return { rankedLists: [], evidenceByCandidateId: new Map() };
+  }
+
+  const memoryCandidates = reader.searchMemories(query, 8).map(toJcpMemoryCandidate);
+  const entityCandidates = reader.searchEntities(query, 8).map(toJcpEntityCandidate);
+  const evidenceByCandidateId = new Map<string, EvidenceItem>();
+  for (const candidate of [...memoryCandidates, ...entityCandidates]) {
+    evidenceByCandidateId.set(candidate.id, toCandidateEvidenceItem(candidate));
+  }
+
+  const rankedLists: RankedList[] = [];
+  if (memoryCandidates.length > 0) {
+    rankedLists.push({ dimension: 'keyword', results: memoryCandidates });
+  }
+  if (entityCandidates.length > 0) {
+    rankedLists.push({ dimension: 'keyword', results: entityCandidates });
+  }
+
+  return { rankedLists, evidenceByCandidateId };
 }
 
 /** Minimum number of truth-direct results to consider "sufficient" */
@@ -289,6 +375,9 @@ export function buildLocalArchiveBundle(
   }
 
   const evidenceItems = collectStoreEvidence(store);
+  const truthEvidenceLookup = buildEvidenceLookup(evidenceItems);
+  const jcpReader = options.jcpLiveReader ?? createJcpLiveReader();
+  const jcpRanked = buildJcpRankedLists(normalizedQuery, jcpReader);
 
   // Step 1: Truth-first — direct query against canonical truth (no RRF)
   const truthResults = queryTruthDirect(normalizedQuery, {
@@ -303,6 +392,7 @@ export function buildLocalArchiveBundle(
     const archiveResults = searchTruthKernel(normalizedQuery, {
       store,
       recallWeights: options.weights,
+      extraRankedLists: jcpRanked.rankedLists,
     });
     // Merge: truth results first (priority), then archive results that aren't duplicates
     const truthIds = new Set(truthResults.map((r) => r.candidate.id));
@@ -310,27 +400,20 @@ export function buildLocalArchiveBundle(
       ...truthResults,
       ...archiveResults.filter((r) => !truthIds.has(r.candidate.id)),
     ];
+  } else if (jcpRanked.rankedLists.length > 0) {
+    const truthIds = new Set(truthResults.map((result) => result.candidate.id));
+    const jcpResults = rrfFusion(jcpRanked.rankedLists);
+    searchResults = [
+      ...truthResults,
+      ...jcpResults.filter((result) => !truthIds.has(result.candidate.id)),
+    ];
   }
 
   // Convert ScoredResults back to EvidenceItems for backward compatibility
   const pipelineItems: EvidenceItem[] = searchResults.map((sr) => {
-    const existing = evidenceItems.find((item) =>
-      item.evidence_id.endsWith(sr.candidate.id) || item.title.includes(sr.candidate.title),
-    );
+    const existing = truthEvidenceLookup.get(sr.candidate.id) ?? jcpRanked.evidenceByCandidateId.get(sr.candidate.id);
     if (existing) return existing;
-
-    return toItem(
-      sr.candidate.source_type === 'entity' ? 'entity'
-        : sr.candidate.source_type === 'decision' ? 'decision'
-        : sr.candidate.source_type === 'preference' ? 'preference'
-        : 'promoted_memory',
-      sr.candidate.id,
-      sr.candidate.title,
-      sr.candidate.content,
-      null,
-      sr.candidate.confidence,
-      sr.candidate.metadata as Record<string, unknown>,
-    );
+    return toCandidateEvidenceItem(sr.candidate);
   });
 
   return {

@@ -1,6 +1,6 @@
 import type { MemoryType, AccessTier, KnowledgePageStatus, KnowledgePageType, TruthStatus } from '../contracts.js';
 
-export const TRUTH_KERNEL_SCHEMA_VERSION = 1;
+export const TRUTH_KERNEL_SCHEMA_VERSION = 2;
 
 export const MEMORY_TYPES: readonly MemoryType[] = [
   'episodic',
@@ -173,6 +173,17 @@ export const TRUTH_KERNEL_MIGRATIONS: readonly string[] = [
     bundle_json TEXT NOT NULL,
     generated_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
+  )
+  `,
+  `
+  CREATE VIRTUAL TABLE IF NOT EXISTS waypath_fts
+  USING fts5(
+    source_table UNINDEXED,
+    source_id UNINDEXED,
+    source_type UNINDEXED,
+    status UNINDEXED,
+    title,
+    content
   )
   `,
   `

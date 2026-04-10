@@ -13,6 +13,12 @@
  */
 
 import type { SqliteTruthKernelStorage } from '../../jarvis_fusion/truth-kernel/storage.js';
+import type {
+  TruthDecisionRecord,
+  TruthEntityRecord,
+  TruthPreferenceRecord,
+  TruthPromotedMemoryRecord,
+} from '../../jarvis_fusion/contracts.js';
 import type { RecallWeightOverrides } from '../../contracts/index.js';
 import type { SearchCandidate, ScoredResult, SearchOptions } from './types.js';
 import type { RankedList } from './rrf.js';
@@ -26,6 +32,8 @@ export interface SearchPipelineOptions {
   readonly graphSeedEntityIds?: readonly string[] | undefined;
   /** Pre-computed graph depths: entity_id → depth from seed */
   readonly graphDepths?: ReadonlyMap<string, number> | undefined;
+  /** Pre-ranked external candidate lists to merge via RRF */
+  readonly extraRankedLists?: readonly RankedList[] | undefined;
 }
 
 const DEFAULT_SOURCE_SYSTEM_WEIGHTS: Readonly<Record<string, number>> = {
@@ -61,21 +69,32 @@ export function queryTruthDirect(
 
   const tokens = tokenize(normalizedQuery);
 
-  // Only gather from truth tables (entities, decisions, preferences, memories)
-  // NOT evidence_bundles or knowledge_pages — those are derived, not canonical truth
-  const candidates = gatherTruthCandidates(store);
+  // Canonical truth only: indexed entities/decisions/memories via FTS + matching preferences.
+  const candidates = loadTruthDirectCandidates(store, normalizedQuery, tokens);
   if (candidates.length === 0) return [];
+
+  // Build FTS5 keyword scores for truth candidates.
+  const ftsKeywordScores = new Map<string, number>();
+  const ftsHits = store.searchWaypathFts(normalizedQuery, Math.max(candidates.length * 2, 40));
+  for (let index = 0; index < ftsHits.length; index += 1) {
+    const hit = ftsHits[index];
+    if (!hit) continue;
+    // Order-based scoring is more stable than raw bm25 magnitudes across SQLite builds.
+    ftsKeywordScores.set(hit.source_id, Math.max(1, ftsHits.length - index));
+  }
 
   // Score each candidate with a direct combined score (no RRF)
   const scored: ScoredResult[] = candidates.map((c) => {
     const titleLower = c.title.toLowerCase();
     const contentLower = c.content.toLowerCase();
 
-    // Keyword score: title matches 3x, content 1x
-    let keyword = 0;
-    for (const token of tokens) {
-      if (titleLower.includes(token)) keyword += 3;
-      if (contentLower.includes(token)) keyword += 1;
+    // Keyword score: prefer FTS5 BM25, fallback to string match
+    let keyword = ftsKeywordScores.get(c.id) ?? 0;
+    if (keyword === 0) {
+      for (const token of tokens) {
+        if (titleLower.includes(token)) keyword += 3;
+        if (contentLower.includes(token)) keyword += 1;
+      }
     }
 
     // Graph score
@@ -137,7 +156,7 @@ export function searchTruthKernel(
   query: string,
   options: SearchPipelineOptions,
 ): ScoredResult[] {
-  const { store, recallWeights, graphDepths } = options;
+  const { store, recallWeights, graphDepths, extraRankedLists } = options;
   const searchOpts: SearchOptions = { limit: 40 };
   const normalizedQuery = query.trim().toLowerCase();
 
@@ -151,7 +170,7 @@ export function searchTruthKernel(
   if (candidates.length === 0) return [];
 
   // Step 2: Score on each dimension independently
-  const keywordRanked = rankByKeyword(candidates, tokens);
+  const keywordRanked = rankByKeyword(candidates, tokens, store);
   const graphRanked = rankByGraph(candidates, graphDepths);
   const provenanceRanked = rankByProvenance(candidates, recallWeights);
   const lexicalRanked = rankByLexical(candidates, tokens);
@@ -166,6 +185,9 @@ export function searchTruthKernel(
   // Only include graph dimension if we have graph data
   if (graphDepths && graphDepths.size > 0) {
     rankedLists.push({ dimension: 'graph', results: graphRanked });
+  }
+  if (extraRankedLists && extraRankedLists.length > 0) {
+    rankedLists.push(...extraRankedLists);
   }
 
   // Step 4: RRF fusion
@@ -188,63 +210,19 @@ function gatherTruthCandidates(
   const candidates: SearchCandidate[] = [];
 
   for (const entity of store.listActiveEntities(limit)) {
-    candidates.push({
-      id: entity.entity_id,
-      title: entity.name,
-      content: `${entity.name} (${entity.entity_type}): ${entity.summary}`,
-      source_type: 'entity',
-      source_system: 'truth-kernel',
-      source_kind: 'entity',
-      confidence: null,
-      graph_depth: null,
-      graph_weight: null,
-      metadata: { entity_type: entity.entity_type },
-    });
+    candidates.push(toEntityCandidate(entity));
   }
 
   for (const decision of store.listActiveDecisions(limit)) {
-    candidates.push({
-      id: decision.decision_id,
-      title: decision.title,
-      content: `${decision.title}: ${decision.statement}`,
-      source_type: 'decision',
-      source_system: 'truth-kernel',
-      source_kind: 'decision',
-      confidence: null,
-      graph_depth: null,
-      graph_weight: null,
-      metadata: { scope_entity_id: decision.scope_entity_id },
-    });
+    candidates.push(toDecisionCandidate(decision));
   }
 
   for (const pref of store.listActivePreferences(limit)) {
-    candidates.push({
-      id: pref.preference_id,
-      title: `${pref.key}=${pref.value}`,
-      content: `Preference ${pref.key}=${pref.value} (${pref.strength}) for ${pref.subject_ref ?? 'global'}`,
-      source_type: 'preference',
-      source_system: 'truth-kernel',
-      source_kind: 'preference',
-      confidence: null,
-      graph_depth: null,
-      graph_weight: null,
-      metadata: { strength: pref.strength, subject_ref: pref.subject_ref },
-    });
+    candidates.push(toPreferenceCandidate(pref));
   }
 
   for (const mem of store.listActivePromotedMemories(limit)) {
-    candidates.push({
-      id: mem.memory_id,
-      title: mem.summary,
-      content: `${mem.summary}\n${mem.content}`,
-      source_type: 'memory',
-      source_system: 'truth-kernel',
-      source_kind: 'memory',
-      confidence: null,
-      graph_depth: null,
-      graph_weight: null,
-      metadata: { memory_type: mem.memory_type, access_tier: mem.access_tier },
-    });
+    candidates.push(toMemoryCandidate(mem));
   }
 
   return candidates;
@@ -299,25 +277,63 @@ function gatherCandidates(
 }
 
 /**
- * Rank by keyword matching — multi-field token scoring.
- * Title matches score 3x, content matches score 1x.
+ * Rank by keyword matching via FTS5 MATCH.
+ *
+ * Uses the waypath_fts index for BM25-based ranking when a store is provided.
+ * Falls back to in-memory string.includes() scoring for candidates not in FTS
+ * (e.g. evidence bundles, knowledge pages gathered at query time).
  */
 function rankByKeyword(
   candidates: readonly SearchCandidate[],
   tokens: readonly string[],
+  store?: SqliteTruthKernelStorage,
 ): SearchCandidate[] {
   if (tokens.length === 0) return [...candidates];
 
+  const candidateMap = new Map(candidates.map((c) => [c.id, c]));
+
+  // FTS5 path: use BM25 ranking from the index
+  if (store) {
+    const query = tokens.join(' ');
+    const ftsHits = store.searchWaypathFts(query, candidates.length || 100);
+    const ftsScored: { candidate: SearchCandidate; score: number }[] = [];
+    const ftsMatchedIds = new Set<string>();
+
+    for (const hit of ftsHits) {
+      const c = candidateMap.get(hit.source_id);
+      if (!c) continue;
+      ftsMatchedIds.add(hit.source_id);
+      ftsScored.push({ candidate: c, score: Math.max(1, ftsHits.length - ftsScored.length) });
+    }
+
+    // Fallback: score candidates not in FTS index (evidence, pages) via string match
+    for (const c of candidates) {
+      if (ftsMatchedIds.has(c.id)) continue;
+      const titleLower = c.title.toLowerCase();
+      const contentLower = c.content.toLowerCase();
+      let score = 0;
+      for (const token of tokens) {
+        if (titleLower.includes(token)) score += 3;
+        if (contentLower.includes(token)) score += 1;
+      }
+      if (score > 0) ftsScored.push({ candidate: c, score: score * 0.0001 });
+    }
+
+    return ftsScored
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((s) => s.candidate);
+  }
+
+  // Pure in-memory fallback (no store)
   const scored = candidates.map((c) => {
     const titleLower = c.title.toLowerCase();
     const contentLower = c.content.toLowerCase();
     let score = 0;
-
     for (const token of tokens) {
       if (titleLower.includes(token)) score += 3;
       if (contentLower.includes(token)) score += 1;
     }
-
     return { candidate: c, score };
   });
 
@@ -423,6 +439,127 @@ function tokenize(query: string): string[] {
     .split(/\s+/)
     .map((t) => t.trim().toLowerCase())
     .filter((t) => t.length > 1); // Skip single-char tokens
+}
+
+function matchesTokens(text: string, tokens: readonly string[]): boolean {
+  const haystack = text.toLowerCase();
+  return tokens.some((token) => haystack.includes(token));
+}
+
+function toEntityCandidate(
+  entity: TruthEntityRecord,
+): SearchCandidate {
+  return {
+    id: entity.entity_id,
+    title: entity.name,
+    content: `${entity.name} (${entity.entity_type}): ${entity.summary}`,
+    source_type: 'entity',
+    source_system: 'truth-kernel',
+    source_kind: 'entity',
+    confidence: null,
+    graph_depth: null,
+    graph_weight: null,
+    metadata: { entity_type: entity.entity_type },
+  };
+}
+
+function toDecisionCandidate(
+  decision: TruthDecisionRecord,
+): SearchCandidate {
+  return {
+    id: decision.decision_id,
+    title: decision.title,
+    content: `${decision.title}: ${decision.statement}`,
+    source_type: 'decision',
+    source_system: 'truth-kernel',
+    source_kind: 'decision',
+    confidence: null,
+    graph_depth: null,
+    graph_weight: null,
+    metadata: { scope_entity_id: decision.scope_entity_id },
+  };
+}
+
+function toPreferenceCandidate(
+  preference: TruthPreferenceRecord,
+): SearchCandidate {
+  return {
+    id: preference.preference_id,
+    title: `${preference.key}=${preference.value}`,
+    content: `Preference ${preference.key}=${preference.value} (${preference.strength}) for ${preference.subject_ref ?? 'global'}`,
+    source_type: 'preference',
+    source_system: 'truth-kernel',
+    source_kind: 'preference',
+    confidence: null,
+    graph_depth: null,
+    graph_weight: null,
+    metadata: { strength: preference.strength, subject_ref: preference.subject_ref },
+  };
+}
+
+function toMemoryCandidate(
+  memory: TruthPromotedMemoryRecord,
+): SearchCandidate {
+  return {
+    id: memory.memory_id,
+    title: memory.summary,
+    content: `${memory.summary}\n${memory.content}`,
+    source_type: 'memory',
+    source_system: 'truth-kernel',
+    source_kind: 'memory',
+    confidence: null,
+    graph_depth: null,
+    graph_weight: null,
+    metadata: { memory_type: memory.memory_type, access_tier: memory.access_tier },
+  };
+}
+
+function loadTruthDirectCandidates(
+  store: SqliteTruthKernelStorage,
+  query: string,
+  tokens: readonly string[],
+): SearchCandidate[] {
+  const candidates: SearchCandidate[] = [];
+  const seen = new Set<string>();
+
+  for (const hit of store.searchWaypathFts(query, 80)) {
+    if (seen.has(hit.source_id)) continue;
+
+    if (hit.source_table === 'entities') {
+      const entity = store.getEntity(hit.source_id);
+      if (!entity) continue;
+      seen.add(hit.source_id);
+      candidates.push(toEntityCandidate(entity));
+      continue;
+    }
+
+    if (hit.source_table === 'decisions') {
+      const decision = store.getDecision(hit.source_id);
+      if (!decision) continue;
+      seen.add(hit.source_id);
+      candidates.push(toDecisionCandidate(decision));
+      continue;
+    }
+
+    const memory = store.getPromotedMemory(hit.source_id);
+    if (!memory) continue;
+    seen.add(hit.source_id);
+    candidates.push(toMemoryCandidate(memory));
+  }
+
+  for (const preference of store.listActivePreferences(40)) {
+    const text = `${preference.key} ${preference.value} ${preference.subject_ref ?? ''}`;
+    if (!matchesTokens(text, tokens)) {
+      continue;
+    }
+    if (seen.has(preference.preference_id)) {
+      continue;
+    }
+    seen.add(preference.preference_id);
+    candidates.push(toPreferenceCandidate(preference));
+  }
+
+  return candidates;
 }
 
 function minDefined(...values: (number | undefined)[]): number | undefined {

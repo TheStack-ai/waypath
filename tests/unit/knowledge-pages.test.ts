@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTruthKernelStorage, ensureTruthKernelSeedData, type SqliteTruthKernelStorage } from '../../src/jarvis_fusion/truth-kernel/index.js';
 import { synthesizePage, refreshPage, markPagesStale, getPageFilePath } from '../../src/knowledge-pages/index.js';
+import { createJcpFixtureDb } from '../helpers/jcp-fixture';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -17,6 +18,11 @@ function createSeededStore(): SqliteTruthKernelStorage {
 
 export function testSynthesizeProjectPage(): void {
   const store = createSeededStore();
+  const root = mkdtempSync(`${tmpdir()}/waypath-project-page-`);
+  const jcpDbPath = join(root, 'jarvis.db');
+  createJcpFixtureDb(jcpDbPath);
+  const previousJarvisPath = process.env.JARVIS_FUSION_JARVIS_DB_PATH;
+  process.env.JARVIS_FUSION_JARVIS_DB_PATH = jcpDbPath;
   try {
     const page = synthesizePage(store, {
       page_type: 'project_page',
@@ -28,6 +34,8 @@ export function testSynthesizeProjectPage(): void {
     if (!page.summary_markdown.includes('alpha')) throw new Error('Expected markdown to contain project name');
     if (!page.summary_markdown.includes('Decisions')) throw new Error('Expected Decisions section');
     if (!page.summary_markdown.includes('Preferences')) throw new Error('Expected Preferences section');
+    if (!page.summary_markdown.includes('[source_system=jarvis-memory-db]')) throw new Error('Expected JCP content in project page');
+    if (!page.summary_markdown.includes('Cross References')) throw new Error('Expected Cross References section');
     if (page.linked_entity_ids.length === 0) throw new Error('Expected linked entities');
 
     // Verify persisted
@@ -35,6 +43,11 @@ export function testSynthesizeProjectPage(): void {
     if (!persisted) throw new Error('Page not persisted to DB');
   } finally {
     store.close();
+    if (previousJarvisPath === undefined) {
+      delete process.env.JARVIS_FUSION_JARVIS_DB_PATH;
+    } else {
+      process.env.JARVIS_FUSION_JARVIS_DB_PATH = previousJarvisPath;
+    }
   }
 }
 
@@ -48,6 +61,7 @@ export function testSynthesizeEntityPage(): void {
     });
 
     if (page.page.page_type !== 'entity_page') throw new Error(`Expected entity_page, got ${page.page.page_type}`);
+    if (page.page.page_id !== 'page:entity:project:alpha') throw new Error(`Expected stable entity page id, got ${page.page.page_id}`);
     if (!page.summary_markdown.includes('Type:')) throw new Error('Expected Type field');
     if (!page.summary_markdown.includes('Relationships')) throw new Error('Expected Relationships section');
   } finally {
@@ -58,14 +72,33 @@ export function testSynthesizeEntityPage(): void {
 export function testSynthesizeDecisionPage(): void {
   const store = createSeededStore();
   try {
+    const ts = nowIso();
+    store.upsertEvidenceBundle({
+      bundle_id: 'bundle:decision-alpha',
+      query: 'decision alpha evidence',
+      generated_at: ts,
+      items: [{
+        evidence_id: 'evidence:decision-alpha',
+        source_ref: 'truth:decision:alpha:shared-backend-host-shims',
+        title: 'Decision evidence',
+        excerpt: 'Evidence linked to the alpha decision.',
+        observed_at: ts,
+        confidence: 0.9,
+        metadata: { source_system: 'truth-kernel', source_kind: 'decision' },
+      }],
+    });
     const page = synthesizePage(store, {
       page_type: 'decision_page',
       anchor_decision_id: 'decision:alpha:shared-backend-host-shims',
       subject: 'shared-backend',
+      linked_evidence_bundle_ids: ['bundle:decision-alpha'],
     });
 
     if (page.page.page_type !== 'decision_page') throw new Error(`Expected decision_page, got ${page.page.page_type}`);
+    if (page.page.page_id !== 'page:decision:decision:alpha:shared-backend-host-shims') throw new Error(`Expected stable decision page id, got ${page.page.page_id}`);
     if (!page.summary_markdown.includes('Statement')) throw new Error('Expected Statement section');
+    if (!page.summary_markdown.includes('Evidence')) throw new Error('Expected Evidence section');
+    if (!page.summary_markdown.includes('Cross References')) throw new Error('Expected Cross References section');
   } finally {
     store.close();
   }

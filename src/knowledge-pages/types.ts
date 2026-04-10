@@ -4,6 +4,7 @@ export interface PageSynthesisInput {
   readonly page_type: KnowledgePageType;
   readonly anchor_entity_id?: string | undefined;
   readonly anchor_decision_id?: string | undefined;
+  readonly linked_evidence_bundle_ids?: readonly string[] | undefined;
   readonly project?: string | undefined;
   readonly subject?: string | undefined;
 }

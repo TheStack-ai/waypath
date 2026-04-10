@@ -4,15 +4,20 @@ import { tmpdir } from 'node:os';
 import { assert, assertDeepEqual, assertEqual } from '../../src/shared/assert';
 import { createSessionRuntime } from '../../src/session-runtime';
 import { createTruthKernelStorage, ensureTruthKernelSeedData } from '../../src/jarvis_fusion/truth-kernel';
+import { createJcpFixtureDb } from '../helpers/jcp-fixture';
 
 export function runSessionRuntimeUnitTest(): void {
   const root = mkdtempSync(`${tmpdir()}/waypath-session-`);
   const store = createTruthKernelStorage(`${root}/truth.db`);
+  const jcpDbPath = `${root}/jarvis.db`;
+  createJcpFixtureDb(jcpDbPath, 'demo-project');
   ensureTruthKernelSeedData(store, {
     project: 'demo-project',
     objective: 'prepare the codex shim',
     activeTask: 'bootstrap cli',
   });
+  const previousJarvisPath = process.env.JARVIS_FUSION_JARVIS_DB_PATH;
+  process.env.JARVIS_FUSION_JARVIS_DB_PATH = jcpDbPath;
 
   const timestamp = new Date().toISOString();
   store.upsertEntity({
@@ -151,81 +156,96 @@ export function runSessionRuntimeUnitTest(): void {
     updated_at: timestamp,
   });
 
-  const runtime = createSessionRuntime({ store, autoSeed: false });
-  const pack = runtime.buildContextPack({
-    project: 'demo-project',
-    objective: 'prepare the codex shim',
-    activeTask: 'bootstrap cli',
-    seedEntities: ['entity-a', 'entity-b'],
-  });
+  try {
+    const runtime = createSessionRuntime({ store, autoSeed: false });
+    const pack = runtime.buildContextPack({
+      project: 'demo-project',
+      objective: 'prepare the codex shim',
+      activeTask: 'bootstrap cli',
+      seedEntities: ['entity-a', 'entity-b'],
+    });
 
-  assertEqual(pack.current_focus.project, 'demo-project');
-  assertEqual(pack.current_focus.objective, 'prepare the codex shim');
-  assertEqual(pack.current_focus.activeTask, 'bootstrap cli');
-  assert(pack.truth_highlights.decisions.length > 0, 'expected seeded decisions');
-  assert(pack.truth_highlights.preferences.length > 0, 'expected seeded preferences');
-  assert(pack.truth_highlights.promoted_memories.length > 0, 'expected seeded promoted memories');
-  assert(
-    pack.truth_highlights.decisions.includes('Bridge imported references into session context'),
-    'expected imported decision in truth highlights',
-  );
-  assert(
-    pack.truth_highlights.preferences.includes('context_mode=graph-aware'),
-    'expected imported preference in truth highlights',
-  );
-  assert(
-    pack.truth_highlights.entities.includes('demo-project imported reference'),
-    'expected imported entity in truth highlights',
-  );
-  assert(
-    pack.truth_highlights.entities.includes('Codex CLI'),
-    'expected graph-linked entity in truth highlights',
-  );
-  assert(
-    pack.truth_highlights.entities.includes('Detached CLI'),
-    'expected disconnected comparison entity in truth highlights',
-  );
-  assertEqual(pack.truth_highlights.entities[0], 'demo-project', 'expected project entity to stay highest priority');
-  assert(
-    pack.truth_highlights.entities.indexOf('Codex CLI') < pack.truth_highlights.entities.indexOf('Detached CLI'),
-    'expected graph relevance to outrank an otherwise similar disconnected system',
-  );
-  assertDeepEqual(pack.graph_context.seed_entities, ['entity-a', 'entity-b']);
-  assert(
-    pack.graph_context.related_entities.includes('project:demo-project:imported'),
-    'expected imported related entity from truth store',
-  );
-  assert(
-    pack.graph_context.related_entities.includes('system:codex-cli'),
-    'expected relationship endpoint in related entities',
-  );
-  assert(
-    pack.graph_context.relationships.some((relationship) => relationship.includes('uses_host')),
-    'expected persisted relationship summary',
-  );
-  assert(
-    pack.graph_context.relationships.some((relationship) =>
-      relationship.includes('Bridge imported references into session context'),
-    ),
-    'expected derived decision graph summary',
-  );
-  assert(
-    pack.graph_context.relationships[0]?.includes('has_active_task'),
-    'expected operational relationship to be prioritized first',
-  );
-  assert(
-    pack.recent_changes.open_contradictions.some((item) => item.includes('context_mode')),
-    'expected preference contradiction to surface',
-  );
-  assert(
-    pack.recent_changes.review_queue.some((item) => item.includes('promotion:demo-project:review-me')),
-    'expected pending review candidate to surface',
-  );
-  assert(
-    pack.recent_changes.stale_items.some((item) => item.includes('page:stale:demo-project')),
-    'expected stale page to surface',
-  );
-  assertEqual(pack.evidence_appendix.enabled, false);
-
-  store.close();
+    assertEqual(pack.current_focus.project, 'demo-project');
+    assertEqual(pack.current_focus.objective, 'prepare the codex shim');
+    assertEqual(pack.current_focus.activeTask, 'bootstrap cli');
+    assert(pack.truth_highlights.decisions.length > 0, 'expected seeded decisions');
+    assert(pack.truth_highlights.preferences.length > 0, 'expected seeded preferences');
+    assert(pack.truth_highlights.promoted_memories.length > 0, 'expected seeded promoted memories');
+    assert(
+      pack.truth_highlights.decisions.includes('Bridge imported references into session context'),
+      'expected imported decision in truth highlights',
+    );
+    assert(
+      pack.truth_highlights.preferences.includes('context_mode=graph-aware'),
+      'expected imported preference in truth highlights',
+    );
+    assert(
+      pack.truth_highlights.entities.includes('demo-project imported reference'),
+      'expected imported entity in truth highlights',
+    );
+    assert(
+      pack.truth_highlights.entities.includes('Codex CLI'),
+      'expected graph-linked entity in truth highlights',
+    );
+    assert(
+      pack.truth_highlights.entities.includes('Detached CLI'),
+      'expected disconnected comparison entity in truth highlights',
+    );
+    assertEqual(pack.truth_highlights.entities[0], 'demo-project', 'expected project entity to stay highest priority');
+    assert(
+      pack.truth_highlights.entities.indexOf('Codex CLI') < pack.truth_highlights.entities.indexOf('Detached CLI'),
+      'expected graph relevance to outrank an otherwise similar disconnected system',
+    );
+    assertDeepEqual(pack.graph_context.seed_entities, ['entity-a', 'entity-b']);
+    assert(
+      pack.graph_context.related_entities.includes('project:demo-project:imported'),
+      'expected imported related entity from truth store',
+    );
+    assert(
+      pack.graph_context.related_entities.includes('system:codex-cli'),
+      'expected relationship endpoint in related entities',
+    );
+    assert(
+      pack.graph_context.relationships.some((relationship) => relationship.includes('uses_host')),
+      'expected persisted relationship summary',
+    );
+    assert(
+      pack.graph_context.relationships.some((relationship) =>
+        relationship.includes('Bridge imported references into session context'),
+      ),
+      'expected derived decision graph summary',
+    );
+    assert(
+      pack.graph_context.relationships[0]?.includes('has_active_task'),
+      'expected operational relationship to be prioritized first',
+    );
+    assert(
+      pack.recent_changes.open_contradictions.some((item) => item.includes('context_mode')),
+      'expected preference contradiction to surface',
+    );
+    assert(
+      pack.recent_changes.review_queue.some((item) => item.includes('promotion:demo-project:review-me')),
+      'expected pending review candidate to surface',
+    );
+    assert(
+      pack.recent_changes.stale_items.some((item) => item.includes('page:stale:demo-project')),
+      'expected stale page to surface',
+    );
+    assert(
+      pack.truth_highlights.decisions.some((decision) => decision.includes('[source_system=jarvis-memory-db]')),
+      'expected jcp decision tag in truth highlights',
+    );
+    assert(
+      pack.truth_highlights.entities.some((entity) => entity.includes('[source_system=jarvis-memory-db]')),
+      'expected jcp entity tag in truth highlights',
+    );
+    assertEqual(pack.evidence_appendix.enabled, false);
+  } finally {
+    store.close();
+    if (previousJarvisPath === undefined) {
+      delete process.env.JARVIS_FUSION_JARVIS_DB_PATH;
+    } else {
+      process.env.JARVIS_FUSION_JARVIS_DB_PATH = previousJarvisPath;
+    }
+  }
 }

@@ -40,6 +40,16 @@ export interface GraphSummaryOptions {
   readonly relatedEntityLimit?: number;
 }
 
+export interface WaypathFtsMatch {
+  readonly source_table: 'entities' | 'decisions' | 'preferences' | 'promoted_memories';
+  readonly source_id: string;
+  readonly source_type: 'entity' | 'decision' | 'preference' | 'memory';
+  readonly status: string;
+  readonly title: string;
+  readonly content: string;
+  readonly rank: number;
+}
+
 interface SessionSnapshotOptions {
   readonly projectEntityId?: string;
   readonly entityLimit?: number;
@@ -80,6 +90,20 @@ function parseJsonArray(value: unknown): string[] {
 
 function asParams(record: object): Readonly<Record<string, unknown>> {
   return record as Readonly<Record<string, unknown>>;
+}
+
+function tokenizeFtsQuery(query: string): string[] {
+  return query
+    .match(/[\p{L}\p{N}_-]+/gu)
+    ?.map((token) => token.trim())
+    .filter((token) => token.length > 0)
+    ?? [];
+}
+
+function toFtsMatchQuery(query: string): string {
+  return tokenizeFtsQuery(query)
+    .map((token) => `"${token.replace(/"/g, '""')}"`)
+    .join(' AND ');
 }
 
 function mapEntity(row: Record<string, unknown>): TruthEntityRecord {
@@ -218,6 +242,7 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
 
   migrate(): void {
     this.db.exec(buildTruthKernelMigrationSql());
+    this.rebuildWaypathFts();
   }
 
   close(): void {
@@ -261,12 +286,28 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     this.run(`INSERT INTO entities (entity_id, entity_type, name, summary, state_json, status, canonical_page_id, created_at, updated_at)
       VALUES (:entity_id,:entity_type,:name,:summary,:state_json,:status,:canonical_page_id,:created_at,:updated_at)
       ON CONFLICT(entity_id) DO UPDATE SET entity_type=excluded.entity_type,name=excluded.name,summary=excluded.summary,state_json=excluded.state_json,status=excluded.status,canonical_page_id=excluded.canonical_page_id,updated_at=excluded.updated_at`, asParams(record));
+    this.refreshWaypathFtsRecord(
+      'entities',
+      record.entity_id,
+      'entity',
+      record.status,
+      record.name,
+      `${record.name}\n${record.summary}`,
+    );
   }
 
   upsertDecision(record: TruthDecisionRecord): void {
     this.run(`INSERT INTO decisions (decision_id,title,statement,status,scope_entity_id,effective_at,superseded_by,provenance_id,created_at,updated_at)
       VALUES (:decision_id,:title,:statement,:status,:scope_entity_id,:effective_at,:superseded_by,:provenance_id,:created_at,:updated_at)
       ON CONFLICT(decision_id) DO UPDATE SET title=excluded.title,statement=excluded.statement,status=excluded.status,scope_entity_id=excluded.scope_entity_id,effective_at=excluded.effective_at,superseded_by=excluded.superseded_by,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
+    this.refreshWaypathFtsRecord(
+      'decisions',
+      record.decision_id,
+      'decision',
+      record.status,
+      record.title,
+      `${record.title}\n${record.statement}`,
+    );
   }
 
   upsertRelationship(record: TruthRelationshipRecord): void {
@@ -286,12 +327,28 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     this.run(`INSERT INTO preferences (preference_id,subject_kind,subject_ref,key,value,strength,status,provenance_id,created_at,updated_at)
       VALUES (:preference_id,:subject_kind,:subject_ref,:key,:value,:strength,:status,:provenance_id,:created_at,:updated_at)
       ON CONFLICT(preference_id) DO UPDATE SET subject_kind=excluded.subject_kind,subject_ref=excluded.subject_ref,key=excluded.key,value=excluded.value,strength=excluded.strength,status=excluded.status,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
+    this.refreshWaypathFtsRecord(
+      'preferences',
+      record.preference_id,
+      'preference',
+      record.status,
+      `${record.key}=${record.value}`,
+      `Preference ${record.key}=${record.value} (${record.strength}) for ${record.subject_ref ?? 'global'}`,
+    );
   }
 
   upsertPromotedMemory(record: TruthPromotedMemoryRecord): void {
     this.run(`INSERT INTO promoted_memories (memory_id,memory_type,access_tier,summary,content,subject_entity_id,status,provenance_id,created_at,updated_at)
       VALUES (:memory_id,:memory_type,:access_tier,:summary,:content,:subject_entity_id,:status,:provenance_id,:created_at,:updated_at)
       ON CONFLICT(memory_id) DO UPDATE SET memory_type=excluded.memory_type,access_tier=excluded.access_tier,summary=excluded.summary,content=excluded.content,subject_entity_id=excluded.subject_entity_id,status=excluded.status,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
+    this.refreshWaypathFtsRecord(
+      'promoted_memories',
+      record.memory_id,
+      'memory',
+      record.status,
+      record.summary,
+      `${record.summary}\n${record.content}`,
+    );
   }
 
   upsertKnowledgePage(page: StoredKnowledgePage): void {
@@ -447,6 +504,22 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     return row ? mapEntity(row) : undefined;
   }
 
+  getDecision(decisionId: string): TruthDecisionRecord | undefined {
+    const row = this.get<Record<string, unknown>>(
+      `SELECT * FROM decisions WHERE decision_id = :decision_id LIMIT 1`,
+      { decision_id: decisionId },
+    );
+    return row ? mapDecision(row) : undefined;
+  }
+
+  getPromotedMemory(memoryId: string): TruthPromotedMemoryRecord | undefined {
+    const row = this.get<Record<string, unknown>>(
+      `SELECT * FROM promoted_memories WHERE memory_id = :memory_id LIMIT 1`,
+      { memory_id: memoryId },
+    );
+    return row ? mapPromotedMemory(row) : undefined;
+  }
+
   listActiveEntities(limit = 5): readonly TruthEntityRecord[] {
     return this.all<Record<string, unknown>>(`SELECT * FROM entities WHERE status = 'active' ORDER BY updated_at DESC LIMIT :limit`, { limit }).map(mapEntity);
   }
@@ -587,9 +660,75 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     return staledPageIds;
   }
 
+  searchWaypathFts(query: string, limit = 20): readonly WaypathFtsMatch[] {
+    const matchQuery = toFtsMatchQuery(query);
+    if (matchQuery.length === 0) return [];
+    return this.all<WaypathFtsMatch>(
+      `SELECT source_table, source_id, source_type, status, title, content, bm25(waypath_fts) AS rank
+         FROM waypath_fts
+        WHERE waypath_fts MATCH :query
+          AND status = 'active'
+        ORDER BY rank
+        LIMIT :limit`,
+      { query: matchQuery, limit },
+    );
+  }
+
   countTable(tableName: 'entities' | 'relationships' | 'decisions' | 'preferences' | 'promoted_memories' | 'knowledge_pages' | 'promotion_candidates' | 'evidence_bundles'): number {
     const row = this.get<{ count: number }>(`SELECT COUNT(*) as count FROM ${tableName}`);
     return row?.count ?? 0;
+  }
+
+  private refreshWaypathFtsRecord(
+    sourceTable: WaypathFtsMatch['source_table'],
+    sourceId: string,
+    sourceType: WaypathFtsMatch['source_type'],
+    status: string,
+    title: string,
+    content: string,
+  ): void {
+    this.run(
+      `DELETE FROM waypath_fts WHERE source_table = :source_table AND source_id = :source_id`,
+      { source_table: sourceTable, source_id: sourceId },
+    );
+    this.run(
+      `INSERT INTO waypath_fts (source_table, source_id, source_type, status, title, content)
+       VALUES (:source_table, :source_id, :source_type, :status, :title, :content)`,
+      {
+        source_table: sourceTable,
+        source_id: sourceId,
+        source_type: sourceType,
+        status,
+        title,
+        content,
+      },
+    );
+  }
+
+  private rebuildWaypathFts(): void {
+    this.db.exec(`DELETE FROM waypath_fts`);
+    this.db.exec(
+      `INSERT INTO waypath_fts (source_table, source_id, source_type, status, title, content)
+       SELECT 'entities', entity_id, 'entity', status, name, name || char(10) || summary
+         FROM entities`,
+    );
+    this.db.exec(
+      `INSERT INTO waypath_fts (source_table, source_id, source_type, status, title, content)
+       SELECT 'decisions', decision_id, 'decision', status, title, title || char(10) || statement
+         FROM decisions`,
+    );
+    this.db.exec(
+      `INSERT INTO waypath_fts (source_table, source_id, source_type, status, title, content)
+       SELECT 'preferences', preference_id, 'preference', status,
+              key || '=' || value,
+              'Preference ' || key || '=' || value || ' (' || strength || ') for ' || COALESCE(subject_ref, 'global')
+         FROM preferences`,
+    );
+    this.db.exec(
+      `INSERT INTO waypath_fts (source_table, source_id, source_type, status, title, content)
+       SELECT 'promoted_memories', memory_id, 'memory', status, summary, summary || char(10) || content
+         FROM promoted_memories`,
+    );
   }
 }
 

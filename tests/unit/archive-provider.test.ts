@@ -4,162 +4,175 @@ import { tmpdir } from 'node:os';
 import { assertEqual } from '../../src/shared/assert';
 import { buildLocalArchiveBundle } from '../../src/jarvis_fusion/archive-provider';
 import { createTruthKernelStorage } from '../../src/jarvis_fusion/truth-kernel';
+import { createJcpFixtureDb } from '../helpers/jcp-fixture';
 
 export function runArchiveProviderUnitTest(): void {
   const root = mkdtempSync(`${tmpdir()}/waypath-archive-provider-`);
   const store = createTruthKernelStorage(`${root}/truth.db`);
+  const jcpDbPath = `${root}/jarvis.db`;
+  createJcpFixtureDb(jcpDbPath);
   const timestamp = new Date().toISOString();
+  const previousJarvisPath = process.env.JARVIS_FUSION_JARVIS_DB_PATH;
+  process.env.JARVIS_FUSION_JARVIS_DB_PATH = jcpDbPath;
 
-  store.upsertProvenance({
-    provenance_id: 'prov:demo',
-    source_system: 'demo-source',
-    source_kind: 'decision',
-    source_ref: 'fixture:demo',
-    observed_at: timestamp,
-    imported_at: timestamp,
-    promoted_at: null,
-    promoted_by: null,
-    confidence: 0.6,
-    notes: null,
-  } as never);
-  store.upsertProvenance({
-    provenance_id: 'prov:brain',
-    source_system: 'jarvis-brain-db',
-    source_kind: 'decision',
-    source_ref: 'fixture:brain',
-    observed_at: timestamp,
-    imported_at: timestamp,
-    promoted_at: null,
-    promoted_by: null,
-    confidence: 0.6,
-    notes: null,
-  } as never);
-  store.upsertProvenance({
-    provenance_id: 'prov:high-confidence',
-    source_system: 'truth-kernel',
-    source_kind: 'decision',
-    source_ref: 'fixture:high-confidence',
-    observed_at: timestamp,
-    imported_at: timestamp,
-    promoted_at: null,
-    promoted_by: null,
-    confidence: 0.95,
-    notes: null,
-  } as never);
-  store.upsertProvenance({
-    provenance_id: 'prov:low-confidence',
-    source_system: 'truth-kernel',
-    source_kind: 'decision',
-    source_ref: 'fixture:low-confidence',
-    observed_at: timestamp,
-    imported_at: timestamp,
-    promoted_at: null,
-    promoted_by: null,
-    confidence: 0.2,
-    notes: null,
-  } as never);
+  try {
+    store.upsertProvenance({
+      provenance_id: 'prov:demo',
+      source_system: 'demo-source',
+      source_kind: 'decision',
+      source_ref: 'fixture:demo',
+      observed_at: timestamp,
+      imported_at: timestamp,
+      promoted_at: null,
+      promoted_by: null,
+      confidence: 0.6,
+      notes: null,
+    } as never);
+    store.upsertProvenance({
+      provenance_id: 'prov:brain',
+      source_system: 'jarvis-brain-db',
+      source_kind: 'decision',
+      source_ref: 'fixture:brain',
+      observed_at: timestamp,
+      imported_at: timestamp,
+      promoted_at: null,
+      promoted_by: null,
+      confidence: 0.6,
+      notes: null,
+    } as never);
+    store.upsertProvenance({
+      provenance_id: 'prov:high-confidence',
+      source_system: 'truth-kernel',
+      source_kind: 'decision',
+      source_ref: 'fixture:high-confidence',
+      observed_at: timestamp,
+      imported_at: timestamp,
+      promoted_at: null,
+      promoted_by: null,
+      confidence: 0.95,
+      notes: null,
+    } as never);
+    store.upsertProvenance({
+      provenance_id: 'prov:low-confidence',
+      source_system: 'truth-kernel',
+      source_kind: 'decision',
+      source_ref: 'fixture:low-confidence',
+      observed_at: timestamp,
+      imported_at: timestamp,
+      promoted_at: null,
+      promoted_by: null,
+      confidence: 0.2,
+      notes: null,
+    } as never);
 
-  store.upsertDecision({
-    decision_id: 'decision:demo',
-    title: 'Ranking candidate from demo source',
-    statement: 'ranking candidate from demo source',
-    status: 'active',
-    scope_entity_id: null,
-    effective_at: timestamp,
-    superseded_by: null,
-    provenance_id: 'prov:demo',
-    created_at: timestamp,
-    updated_at: timestamp,
-  });
-  store.upsertDecision({
-    decision_id: 'decision:brain',
-    title: 'Ranking candidate from brain source',
-    statement: 'ranking candidate from brain source',
-    status: 'active',
-    scope_entity_id: null,
-    effective_at: timestamp,
-    superseded_by: null,
-    provenance_id: 'prov:brain',
-    created_at: timestamp,
-    updated_at: timestamp,
-  });
-  store.upsertDecision({
-    decision_id: 'decision:high-confidence',
-    title: 'Confidence candidate from strong provenance',
-    statement: 'confidence candidate from strong provenance',
-    status: 'active',
-    scope_entity_id: null,
-    effective_at: timestamp,
-    superseded_by: null,
-    provenance_id: 'prov:high-confidence',
-    created_at: timestamp,
-    updated_at: timestamp,
-  });
-  store.upsertDecision({
-    decision_id: 'decision:low-confidence',
-    title: 'Confidence candidate from weak provenance',
-    statement: 'confidence candidate from weak provenance',
-    status: 'active',
-    scope_entity_id: null,
-    effective_at: timestamp,
-    superseded_by: null,
-    provenance_id: 'prov:low-confidence',
-    created_at: timestamp,
-    updated_at: timestamp,
-  });
-  store.upsertDecision({
-    decision_id: 'decision:excerpt-match',
-    title: 'Excerpt only match',
-    statement: 'lexical edge appears in the excerpt body',
-    status: 'active',
-    scope_entity_id: null,
-    effective_at: timestamp,
-    superseded_by: null,
-    provenance_id: 'prov:high-confidence',
-    created_at: timestamp,
-    updated_at: timestamp,
-  });
-  store.upsertDecision({
-    decision_id: 'decision:title-match',
-    title: 'Lexical edge title match',
-    statement: 'body text',
-    status: 'active',
-    scope_entity_id: null,
-    effective_at: timestamp,
-    superseded_by: null,
-    provenance_id: 'prov:high-confidence',
-    created_at: timestamp,
-    updated_at: timestamp,
-  });
+    store.upsertDecision({
+      decision_id: 'decision:demo',
+      title: 'Ranking candidate from demo source',
+      statement: 'ranking candidate from demo source',
+      status: 'active',
+      scope_entity_id: null,
+      effective_at: timestamp,
+      superseded_by: null,
+      provenance_id: 'prov:demo',
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    store.upsertDecision({
+      decision_id: 'decision:brain',
+      title: 'Ranking candidate from brain source',
+      statement: 'ranking candidate from brain source',
+      status: 'active',
+      scope_entity_id: null,
+      effective_at: timestamp,
+      superseded_by: null,
+      provenance_id: 'prov:brain',
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    store.upsertDecision({
+      decision_id: 'decision:high-confidence',
+      title: 'Confidence candidate from strong provenance',
+      statement: 'confidence candidate from strong provenance',
+      status: 'active',
+      scope_entity_id: null,
+      effective_at: timestamp,
+      superseded_by: null,
+      provenance_id: 'prov:high-confidence',
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    store.upsertDecision({
+      decision_id: 'decision:low-confidence',
+      title: 'Confidence candidate from weak provenance',
+      statement: 'confidence candidate from weak provenance',
+      status: 'active',
+      scope_entity_id: null,
+      effective_at: timestamp,
+      superseded_by: null,
+      provenance_id: 'prov:low-confidence',
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    store.upsertDecision({
+      decision_id: 'decision:excerpt-match',
+      title: 'Excerpt only match',
+      statement: 'lexical edge appears in the excerpt body',
+      status: 'active',
+      scope_entity_id: null,
+      effective_at: timestamp,
+      superseded_by: null,
+      provenance_id: 'prov:high-confidence',
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    store.upsertDecision({
+      decision_id: 'decision:title-match',
+      title: 'Lexical edge title match',
+      statement: 'body text',
+      status: 'active',
+      scope_entity_id: null,
+      effective_at: timestamp,
+      superseded_by: null,
+      provenance_id: 'prov:high-confidence',
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
 
-  const defaultBundle = buildLocalArchiveBundle('ranking candidate', store);
-  // With RRF pipeline, results are ranked by fused keyword+lexical+provenance scores.
-  // Both demo and brain decisions match "ranking candidate" in title+statement.
-  // Verify that results contain the expected candidates (ordering may vary with RRF).
-  const defaultSystems = defaultBundle.items.map((item) => item.metadata.source_system);
-  assertEqual(
-    defaultSystems.includes('jarvis-brain-db') || defaultSystems.includes('demo-source'),
-    true,
-  );
+    const defaultBundle = buildLocalArchiveBundle('ranking candidate', store);
+    const defaultSystems = defaultBundle.items.map((item) => item.metadata.source_system);
+    assertEqual(
+      defaultSystems.includes('jarvis-brain-db') || defaultSystems.includes('demo-source'),
+      true,
+    );
 
-  const weightedBundle = buildLocalArchiveBundle('ranking candidate', store, {
-    weights: {
-      sourceSystems: {
-        'demo-source': 4,
-        'jarvis-brain-db': 0,
+    const weightedBundle = buildLocalArchiveBundle('ranking candidate', store, {
+      weights: {
+        sourceSystems: {
+          'demo-source': 4,
+          'jarvis-brain-db': 0,
+        },
       },
-    },
-  });
-  assertEqual(weightedBundle.items[0]?.metadata.source_system, 'demo-source');
+    });
+    assertEqual(weightedBundle.items[0]?.metadata.source_system, 'demo-source');
 
-  const confidenceBundle = buildLocalArchiveBundle('confidence candidate', store);
-  assertEqual(confidenceBundle.items[0]?.source_ref, 'fixture:high-confidence');
+    const confidenceBundle = buildLocalArchiveBundle('confidence candidate', store);
+    assertEqual(confidenceBundle.items[0]?.source_ref, 'fixture:high-confidence');
 
-  const lexicalBundle = buildLocalArchiveBundle('lexical edge', store);
-  // Both "Lexical edge title match" and "Excerpt only match" contain "lexical edge".
-  // With RRF pipeline, verify both are found (ordering depends on fused multi-dimensional scoring).
-  const lexicalTitles = lexicalBundle.items.map((item) => item.title);
-  assertEqual(lexicalTitles.some((t) => t.includes('Lexical edge')), true);
+    const lexicalBundle = buildLocalArchiveBundle('lexical edge', store);
+    const lexicalTitles = lexicalBundle.items.map((item) => item.title);
+    assertEqual(lexicalTitles.some((t) => t.includes('Lexical edge')), true);
 
-  store.close();
+    const jcpBundle = buildLocalArchiveBundle('alpha external brain', store);
+    assertEqual(
+      jcpBundle.items.some((item) => item.metadata.source_system === 'jarvis-memory-db'),
+      true,
+    );
+  } finally {
+    store.close();
+    if (previousJarvisPath === undefined) {
+      delete process.env.JARVIS_FUSION_JARVIS_DB_PATH;
+    } else {
+      process.env.JARVIS_FUSION_JARVIS_DB_PATH = previousJarvisPath;
+    }
+  }
 }

@@ -6,6 +6,7 @@ import { runTruthKernelUnitTest } from './unit/truth-kernel.test';
 import { runSourceReaderBootstrapUnitTest } from './unit/source-reader-bootstrap.test';
 import { runArchiveProviderUnitTest } from './unit/archive-provider.test';
 import { runMemPalaceProviderUnitTest } from './unit/mempalace-provider.test';
+import { runJcpLiveReaderUnitTest } from './unit/jcp-live-reader.test';
 import { runRetrievalStrategyUnitTest } from './unit/retrieval-strategy.test';
 import { runRuntimeConfigUnitTest } from './unit/runtime-config.test';
 import {
@@ -50,6 +51,10 @@ import {
   testQueryTruthDirectNoRrf,
   testTruthFirstRecallSufficiency,
   testQueryTruthDirectEmptyQuery,
+  testFtsIndexPopulated,
+  testFtsUpsertUpdatesIndex,
+  testFtsEmptyQueryReturnsNothing,
+  testFtsSearchUsedByPipeline,
 } from './unit/search-pipeline.test';
 import {
   testTraversalDepth1,
@@ -99,6 +104,7 @@ const tests: TestCase[] = [
   { name: 'source-reader bootstrap unit', run: runSourceReaderBootstrapUnitTest },
   { name: 'archive provider unit', run: runArchiveProviderUnitTest },
   { name: 'mempalace provider unit', run: runMemPalaceProviderUnitTest },
+  { name: 'jcp live reader unit', run: runJcpLiveReaderUnitTest },
   { name: 'retrieval strategy unit', run: runRetrievalStrategyUnitTest },
   { name: 'runtime config unit', run: runRuntimeConfigUnitTest },
   { name: 'codex cli integration', run: runCodexCliIntegrationTest },
@@ -149,6 +155,10 @@ const tests: TestCase[] = [
   { name: 'search: truth-direct no RRF', run: testQueryTruthDirectNoRrf },
   { name: 'search: truth-first recall sufficiency', run: testTruthFirstRecallSufficiency },
   { name: 'search: truth-direct empty query', run: testQueryTruthDirectEmptyQuery },
+  { name: 'search: FTS5 index populated', run: testFtsIndexPopulated },
+  { name: 'search: FTS5 upsert updates index', run: testFtsUpsertUpdatesIndex },
+  { name: 'search: FTS5 empty query returns nothing', run: testFtsEmptyQueryReturnsNothing },
+  { name: 'search: FTS5 used by pipeline', run: testFtsSearchUsedByPipeline },
   { name: 'ontology: traversal depth 1', run: testTraversalDepth1 },
   { name: 'ontology: traversal depth 2', run: testTraversalDepth2 },
   { name: 'ontology: traversal depth 3', run: testTraversalDepth3 },

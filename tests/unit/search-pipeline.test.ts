@@ -5,6 +5,7 @@ import { dedupResults } from '../../src/archive-kernel/search/dedup.js';
 import { chunkText } from '../../src/archive-kernel/chunker/index.js';
 import { contentHash, hasChanged } from '../../src/archive-kernel/content-hash.js';
 import type { SearchCandidate, ScoredResult } from '../../src/archive-kernel/search/types.js';
+import { assert, assertEqual } from '../../src/shared/assert';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -276,6 +277,74 @@ export function testQueryTruthDirectEmptyQuery(): void {
   try {
     const results = queryTruthDirect('', { store });
     if (results.length !== 0) throw new Error('Expected no results for empty query');
+  } finally {
+    store.close();
+  }
+}
+
+// --- FTS5 Tests ---
+
+export function testFtsIndexPopulated(): void {
+  const store = createSeededStore();
+  try {
+    // Seed data + extra entities should be in FTS index
+    const results = store.searchWaypathFts('SQLite', 10);
+    assert(results.length > 0, 'Expected FTS hits for "SQLite"');
+    const ids = results.map((r) => r.source_id);
+    assert(ids.includes('tool:sqlite'), 'Expected tool:sqlite in FTS results');
+    assert(ids.includes('decision:use-sqlite'), 'Expected decision:use-sqlite in FTS results');
+    // All results should have record_type
+    for (const r of results) {
+      assert(r.source_type === 'entity' || r.source_type === 'decision' || r.source_type === 'preference' || r.source_type === 'memory', `Unexpected source_type: ${r.source_type}`);
+    }
+  } finally {
+    store.close();
+  }
+}
+
+export function testFtsUpsertUpdatesIndex(): void {
+  const store = createSeededStore();
+  try {
+    const ts = nowIso();
+    // Insert entity with unique term
+    store.upsertEntity({ entity_id: 'tool:xyzunique', entity_type: 'tool', name: 'XyzUnique', summary: 'A very unique tool', state_json: '{}', status: 'active', canonical_page_id: null, created_at: ts, updated_at: ts });
+    let results = store.searchWaypathFts('xyzunique', 10);
+    assertEqual(results.length, 1);
+    assertEqual(results[0]!.source_id, 'tool:xyzunique');
+
+    // Update the entity — FTS should reflect new content
+    store.upsertEntity({ entity_id: 'tool:xyzunique', entity_type: 'tool', name: 'XyzRenamed', summary: 'Renamed tool description', state_json: '{}', status: 'active', canonical_page_id: null, created_at: ts, updated_at: ts });
+    results = store.searchWaypathFts('xyzunique', 10);
+    assertEqual(results.length, 0); // old name no longer matches
+    results = store.searchWaypathFts('xyzrenamed', 10);
+    assertEqual(results.length, 1);
+    assertEqual(results[0]!.source_id, 'tool:xyzunique');
+  } finally {
+    store.close();
+  }
+}
+
+export function testFtsEmptyQueryReturnsNothing(): void {
+  const store = createSeededStore();
+  try {
+    assertEqual(store.searchWaypathFts('', 10).length, 0);
+    assertEqual(store.searchWaypathFts('   ', 10).length, 0);
+  } finally {
+    store.close();
+  }
+}
+
+export function testFtsSearchUsedByPipeline(): void {
+  const store = createSeededStore();
+  try {
+    // queryTruthDirect uses FTS5 internally now
+    const results = queryTruthDirect('SQLite database', { store });
+    assert(results.length > 0, 'Expected pipeline results using FTS');
+    const topResult = results[0]!;
+    assert(topResult.breakdown.keyword > 0, 'Expected positive keyword score from FTS');
+    // SQLite entity or decision should be in top results
+    const hasSqlite = results.some((r) => r.candidate.id.includes('sqlite'));
+    assert(hasSqlite, 'Expected SQLite-related result from FTS-powered pipeline');
   } finally {
     store.close();
   }
