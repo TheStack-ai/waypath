@@ -1,21 +1,7 @@
 import type { SessionContextPack, StoredKnowledgePage } from '../contracts/index.js';
 import { type SqliteTruthKernelStorage } from './truth-kernel/index.js';
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
-function uniqueStrings(values: readonly string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter((value) => value.length > 0))];
-}
-
-function renderBulletSection(title: string, items: readonly string[]): string[] {
-  return [
-    `## ${title}`,
-    ...(items.length > 0 ? items : ['- none']),
-    '',
-  ];
-}
+import { bulletSection, uniqueStrings } from '../shared/text.js';
+import { nowIso } from '../shared/time.js';
 
 function orderByPreferredLabels(values: readonly string[], preferredLabels: readonly string[]): string[] {
   const order = new Map(preferredLabels.map((label, index) => [label, index] as const));
@@ -75,45 +61,45 @@ export function synthesizeSessionPage(pack: SessionContextPack, store?: SqliteTr
     `- Objective: ${pack.current_focus.objective}`,
     `- Active task: ${pack.current_focus.activeTask}`,
     '',
-    ...renderBulletSection(
+    ...bulletSection(
       'Decisions',
       persistedDecisions.length > 0
         ? persistedDecisions.map((decision) => `- **${decision.title}** (${decision.decision_id}) — ${decision.statement}`)
         : pack.truth_highlights.decisions.map((decision) => `- ${decision}`),
     ),
-    ...renderBulletSection(
+    ...bulletSection(
       'Preferences',
       persistedPreferences.length > 0
         ? persistedPreferences.map((preference) => `- ${preference.key}=${preference.value} (${preference.strength})`)
         : pack.truth_highlights.preferences.map((preference) => `- ${preference}`),
     ),
-    ...renderBulletSection(
+    ...bulletSection(
       'Related entities',
       sortedEntities.length > 0
         ? sortedEntities.map((entity) => `- **${entity.name}** (${entity.entity_type}) — ${entity.summary}`)
         : pack.truth_highlights.entities.map((entity) => `- ${entity}`),
     ),
-    ...renderBulletSection(
+    ...bulletSection(
       'Promoted memories',
       pack.truth_highlights.promoted_memories.map((memory) => `- ${memory}`),
     ),
-    ...renderBulletSection(
+    ...bulletSection(
       'Graph links',
       graphLinks.map((relationship) => `- ${relationship}`),
     ),
-    ...renderBulletSection(
+    ...bulletSection(
       'Review queue',
       pack.recent_changes.review_queue.map((item) => `- ${item}`),
     ),
-    ...renderBulletSection(
+    ...bulletSection(
       'Open contradictions',
       pack.recent_changes.open_contradictions.map((item) => `- ${item}`),
     ),
-    ...renderBulletSection(
+    ...bulletSection(
       'Stale items',
       pack.recent_changes.stale_items.map((item) => `- ${item}`),
     ),
-    ...renderBulletSection(
+    ...bulletSection(
       'Evidence bundles',
       pack.evidence_appendix.bundles.map((bundleId) => `- ${bundleId}`),
     ),

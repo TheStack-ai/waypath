@@ -19,7 +19,8 @@ import {
   type StaleItem,
 } from '../contracts';
 import { createSessionRuntime, type SessionRuntimeOptions } from '../session-runtime';
-import { buildLocalArchiveBundle } from '../jarvis_fusion/archive-provider.js';
+import { createJcpLiveReader } from '../adapters/jcp/index.js';
+import { buildLocalArchiveBundle, buildTruthDirectBundle } from '../jarvis_fusion/archive-provider.js';
 import { synthesizePage, refreshPage as refreshKnowledgePage } from '../knowledge-pages/index.js';
 import { submitCandidate, reviewCandidate, resolveContradiction as resolveContradictionEngine } from '../promotion/index.js';
 import { expandGraphContext, executePattern } from '../ontology-support/index.js';
@@ -36,7 +37,8 @@ export type ManagedFacadeApi = FacadeApi & {
 
 export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
   const store = options.store ?? createTruthKernelStorage(options.storePath ?? defaultTruthKernelStoreLocation(), { autoMigrate: true });
-  const runtime = options.runtime ?? createSessionRuntime({ ...options, store });
+  const jcpLiveReader = options.jcpLiveReader ?? createJcpLiveReader();
+  const runtime = options.runtime ?? createSessionRuntime({ ...options, store, jcpLiveReader });
   const description: FacadeDescription = {
     name: 'waypath-facade',
     host_shims: ['codex', 'claude-code'],
@@ -59,6 +61,7 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
         buildEvidenceQuery(input.project, input.objective, input.activeTask),
         store,
         options.recallWeights,
+        jcpLiveReader,
       );
       return {
         operation: 'session-start',
@@ -73,32 +76,32 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
       };
     },
     recall(query: string): RecallResult {
-      const bundle = buildLocalArchiveBundle(
+      const truthBundle = buildTruthDirectBundle(
         query,
         store,
         options.recallWeights ? { weights: options.recallWeights } : undefined,
       );
-      store.upsertEvidenceBundle(bundle);
+      const bundle = buildLocalArchiveBundle(
+        query,
+        store,
+        {
+          ...(options.recallWeights ? { weights: options.recallWeights } : {}),
+          jcpLiveReader,
+        },
+      );
+      if (bundle.items.length > 0) {
+        store.upsertEvidenceBundle(bundle);
+      }
       return {
         operation: 'recall',
         status: 'ready',
-        message: `archive recall prepared for ${query}`,
+        message: `truth recall returned ${truthBundle.items.length} item(s); archive recall returned ${bundle.items.length} item(s)`,
         bundle,
+        truth_bundle: truthBundle,
       };
     },
     page(subject: string): PageResult {
-      const pageType = subject.startsWith('project:') ? 'project_page' as const
-        : subject.startsWith('decision:') ? 'decision_page' as const
-        : subject.startsWith('entity:') || subject.startsWith('person:') || subject.startsWith('tool:') || subject.startsWith('concept:') ? 'entity_page' as const
-        : store.getEntity(`project:${subject}`) ? 'project_page' as const
-        : 'session_brief' as const;
-      const page = synthesizePage(store, {
-        page_type: pageType,
-        project: pageType === 'project_page' || pageType === 'session_brief' ? subject.replace(/^project:/, '') : undefined,
-        subject,
-        anchor_entity_id: pageType === 'entity_page' ? subject : undefined,
-        anchor_decision_id: pageType === 'decision_page' ? subject : undefined,
-      });
+      const page = synthesizePage(store, detectPageInput(store, subject), { jcpLiveReader });
       return {
         operation: 'page',
         status: 'ready',
@@ -254,7 +257,7 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
       };
     },
     refreshPage(pageId: string) {
-      const result = refreshKnowledgePage(store, pageId);
+      const result = refreshKnowledgePage(store, pageId, { jcpLiveReader });
       return {
         operation: 'refresh-page' as const,
         status: (result.refreshed ? 'ready' : 'missing') as 'ready' | 'missing',
@@ -321,6 +324,50 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
   };
 }
 
+function detectPageInput(
+  store: ReturnType<typeof createTruthKernelStorage>,
+  subject: string,
+): {
+  page_type: 'session_brief' | 'project_page' | 'entity_page' | 'decision_page';
+  project?: string;
+  subject: string;
+  anchor_entity_id?: string;
+  anchor_decision_id?: string;
+} {
+  const normalizedSubject = subject.trim();
+
+  if (normalizedSubject.startsWith('project:')) {
+    return {
+      page_type: 'project_page',
+      project: normalizedSubject.slice('project:'.length),
+      subject: normalizedSubject,
+      anchor_entity_id: normalizedSubject,
+    };
+  }
+
+  if (normalizedSubject.startsWith('decision:')) {
+    return {
+      page_type: 'decision_page',
+      subject: normalizedSubject,
+      anchor_decision_id: normalizedSubject,
+    };
+  }
+
+  if (store.getEntity(normalizedSubject) || /^[a-z][a-z0-9_-]*:/iu.test(normalizedSubject)) {
+    return {
+      page_type: 'entity_page',
+      subject: normalizedSubject,
+      anchor_entity_id: normalizedSubject,
+    };
+  }
+
+  return {
+    page_type: 'session_brief',
+    project: normalizedSubject,
+    subject: normalizedSubject,
+  };
+}
+
 function buildEvidenceQuery(
   project?: string,
   objective?: string,
@@ -332,22 +379,26 @@ function buildEvidenceQuery(
 }
 
 /**
- * Append evidence as a supplementary appendix.
- * Truth highlights (already in context_pack) are the main content.
- * Evidence appendix is secondary — only enabled when it adds value beyond truth highlights.
+ * Append archive evidence as a supplementary appendix.
+ * Truth highlights stay in the main context pack; archive evidence is attached only
+ * when live archive providers returned bundle items.
  */
 function withEvidenceAppendix(
   pack: SessionStartResult['context_pack'],
   query: string,
   store: ReturnType<typeof createTruthKernelStorage>,
   recallWeights?: RecallWeightOverrides,
+  jcpLiveReader?: ReturnType<typeof createJcpLiveReader>,
 ): SessionStartResult['context_pack'] {
   if (!query.trim()) return pack;
 
   const evidenceBundle = buildLocalArchiveBundle(
     query,
     store,
-    recallWeights ? { weights: recallWeights } : undefined,
+    {
+      ...(recallWeights ? { weights: recallWeights } : {}),
+      jcpLiveReader,
+    },
   );
 
   // Only persist and attach if the bundle has items beyond what truth highlights already cover

@@ -23,18 +23,42 @@ export async function runFacadeUnitTest(): Promise<void> {
   assertEqual(session.session_id, 'unit-project:test-run');
   assertEqual(session.context_pack.current_focus.project, 'unit-project');
   assertEqual(session.context_pack.current_focus.activeTask, 'test-run');
-  assertEqual(session.context_pack.evidence_appendix.enabled, true);
-  assert(session.context_pack.evidence_appendix.bundles.length > 0, 'expected evidence appendix bundle ids');
+  assertEqual(
+    session.context_pack.evidence_appendix.enabled,
+    session.context_pack.evidence_appendix.bundles.length > 0,
+  );
 
   const recall = facade.recall('shared backend');
   assertEqual(recall.status, 'ready');
   const bundle = await Promise.resolve(recall.bundle);
-  // Evidence bundle contains archive-sourced items only (truth/archive separation enforced)
-  assert(bundle !== undefined, 'expected recall bundle');
+  const truthBundle = await Promise.resolve(recall.truth_bundle);
+  assert(bundle !== undefined, 'expected archive recall bundle');
+  assert(truthBundle && truthBundle.items.length > 0, 'expected truth-direct recall bundle');
+  assert(
+    truthBundle.items.some((item) => item.title.includes('Decision:')),
+    'expected truth bundle to include truth-backed evidence items',
+  );
+  assert(
+    bundle.items.every((item) => {
+      const sourceSystem = String(item.metadata.source_system ?? '');
+      return sourceSystem === 'jarvis-memory-db' || sourceSystem === 'mempalace';
+    }),
+    'expected archive bundle to contain archive-only sources',
+  );
 
   const page = facade.page('unit-project');
   assertEqual(page.status, 'ready');
   assert(page.page?.summary_markdown.includes('# unit-project'), 'expected synthesized page markdown');
+  assertEqual(page.page?.page.page_type, 'session_brief');
+
+  const projectPage = facade.page('project:unit-project');
+  assertEqual(projectPage.page?.page.page_type, 'project_page');
+
+  const entityPage = facade.page('system:unit-project:codex-shim');
+  assertEqual(entityPage.page?.page.page_type, 'entity_page');
+
+  const decisionPage = facade.page('decision:unit-project:shared-backend-host-shims');
+  assertEqual(decisionPage.page?.page.page_type, 'decision_page');
 
   const promote = facade.promote('remember this decision');
   assertEqual(promote.status, 'ready');
@@ -49,8 +73,7 @@ export async function runFacadeUnitTest(): Promise<void> {
   assertEqual(queue.status, 'ready');
   assert(queue.pending_review.length === 0, 'expected accepted candidate to leave pending queue');
 
-  // page() now infers page_type from subject — 'unit-project' resolves to project_page
-  const pageInspect = facade.inspectPage(page.page?.page.page_id ?? 'page:project:unit-project');
+  const pageInspect = facade.inspectPage(page.page?.page.page_id ?? 'page:session:unit-project');
   assertEqual(pageInspect.status, 'ready');
   assert(pageInspect.page?.summary_markdown.includes('unit-project'), 'expected page inspect result');
 

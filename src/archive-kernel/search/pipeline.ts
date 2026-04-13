@@ -2,14 +2,12 @@
  * Waypath Search Pipeline
  *
  * Combines 4 ranking dimensions via RRF fusion:
- * 1. Keyword (FTS5 on truth kernel tables)
- * 2. Graph (ontology traversal depth/weight)
- * 3. Provenance (source system/kind weights)
- * 4. Lexical (token overlap fallback)
+ * 1. Keyword
+ * 2. Graph
+ * 3. Provenance
+ * 4. Lexical
  *
  * Then applies 4-layer dedup to produce final ranked results.
- *
- * This replaces the old string.includes() scoring with a real retrieval pipeline.
  */
 
 import type { SqliteTruthKernelStorage } from '../../jarvis_fusion/truth-kernel/storage.js';
@@ -19,11 +17,18 @@ import type {
   TruthPreferenceRecord,
   TruthPromotedMemoryRecord,
 } from '../../jarvis_fusion/contracts.js';
-import type { RecallWeightOverrides } from '../../contracts/index.js';
+import {
+  toSourceKind,
+  toSourceSystem,
+  type RecallWeightOverrides,
+  type SourceKind,
+  type SourceSystem,
+} from '../../contracts/index.js';
 import type { SearchCandidate, ScoredResult, SearchOptions } from './types.js';
 import type { RankedList } from './rrf.js';
 import { rrfFusion } from './rrf.js';
 import { dedupResults } from './dedup.js';
+import { tokenize } from '../../shared/text.js';
 
 export interface SearchPipelineOptions {
   readonly store: SqliteTruthKernelStorage;
@@ -32,18 +37,21 @@ export interface SearchPipelineOptions {
   readonly graphSeedEntityIds?: readonly string[] | undefined;
   /** Pre-computed graph depths: entity_id → depth from seed */
   readonly graphDepths?: ReadonlyMap<string, number> | undefined;
+  /** Additional archive/evidence candidates gathered outside the truth store */
+  readonly extraCandidates?: readonly SearchCandidate[] | undefined;
   /** Pre-ranked external candidate lists to merge via RRF */
   readonly extraRankedLists?: readonly RankedList[] | undefined;
 }
 
-const DEFAULT_SOURCE_SYSTEM_WEIGHTS: Readonly<Record<string, number>> = {
+const DEFAULT_SOURCE_SYSTEM_WEIGHTS: Readonly<Partial<Record<SourceSystem, number>>> = {
   'truth-kernel': 1.1,
   'jarvis-brain-db': 0.95,
   'jarvis-memory-db': 0.85,
+  mempalace: 0.8,
   'demo-source': 0.3,
 };
 
-const DEFAULT_SOURCE_KIND_WEIGHTS: Readonly<Record<string, number>> = {
+const DEFAULT_SOURCE_KIND_WEIGHTS: Readonly<Partial<Record<SourceKind, number>>> = {
   decision: 0.9,
   preference: 0.8,
   relationship: 0.7,
@@ -51,6 +59,12 @@ const DEFAULT_SOURCE_KIND_WEIGHTS: Readonly<Record<string, number>> = {
   entity: 0.55,
   evidence: 0.5,
 };
+
+const ARCHIVE_SOURCE_SYSTEMS = new Set<SourceSystem>([
+  'jarvis-memory-db',
+  'mempalace',
+  'local-archive',
+]);
 
 /**
  * Query truth kernel directly — no RRF fusion.
@@ -146,17 +160,15 @@ export function queryTruthDirect(
 }
 
 /**
- * Archive-internal RRF fusion pipeline.
+ * Archive/evidence RRF fusion pipeline.
  *
- * Combines 4 ranking dimensions via Reciprocal Rank Fusion.
- * Use this only for archive-internal result merging — NOT as the primary
- * truth query path. Call queryTruthDirect() first for truth-first recall.
+ * Canonical truth results must be queried via queryTruthDirect().
  */
 export function searchTruthKernel(
   query: string,
   options: SearchPipelineOptions,
 ): ScoredResult[] {
-  const { store, recallWeights, graphDepths, extraRankedLists } = options;
+  const { store, recallWeights, graphDepths, extraCandidates, extraRankedLists } = options;
   const searchOpts: SearchOptions = { limit: 40 };
   const normalizedQuery = query.trim().toLowerCase();
 
@@ -164,10 +176,15 @@ export function searchTruthKernel(
 
   const tokens = tokenize(normalizedQuery);
 
-  // Step 1: Gather all candidates from truth tables
-  const candidates = gatherCandidates(store, searchOpts);
+  // Step 1: Gather archive/evidence candidates.
+  const candidates = dedupeCandidates([
+    ...gatherCandidates(store, searchOpts),
+    ...(extraCandidates ?? []),
+  ]);
 
-  if (candidates.length === 0) return [];
+  if (candidates.length === 0 && (!extraRankedLists || extraRankedLists.length === 0)) {
+    return [];
+  }
 
   // Step 2: Score on each dimension independently
   const keywordRanked = rankByKeyword(candidates, tokens, store);
@@ -190,65 +207,44 @@ export function searchTruthKernel(
     rankedLists.push(...extraRankedLists);
   }
 
-  // Step 4: RRF fusion
-  const fused = rrfFusion(rankedLists);
+  // Step 4: RRF fusion across archive/evidence candidates only.
+  const archiveResults = candidates.length > 0 || (extraRankedLists?.length ?? 0) > 0
+    ? rrfFusion(rankedLists)
+    : [];
 
-  // Step 5: Dedup
-  const deduped = dedupResults(fused);
-
-  return deduped.slice(0, searchOpts.limit ?? 20);
+  return dedupResults(archiveResults).slice(0, searchOpts.limit ?? 20);
 }
 
 /**
- * Gather canonical truth candidates only: entities, decisions, preferences, memories.
- * Excludes evidence_bundles and knowledge_pages (those are derived, not canonical truth).
- */
-function gatherTruthCandidates(
-  store: SqliteTruthKernelStorage,
-  limit = 60,
-): SearchCandidate[] {
-  const candidates: SearchCandidate[] = [];
-
-  for (const entity of store.listActiveEntities(limit)) {
-    candidates.push(toEntityCandidate(entity));
-  }
-
-  for (const decision of store.listActiveDecisions(limit)) {
-    candidates.push(toDecisionCandidate(decision));
-  }
-
-  for (const pref of store.listActivePreferences(limit)) {
-    candidates.push(toPreferenceCandidate(pref));
-  }
-
-  for (const mem of store.listActivePromotedMemories(limit)) {
-    candidates.push(toMemoryCandidate(mem));
-  }
-
-  return candidates;
-}
-
-/**
- * Gather ALL candidates from truth kernel tables including derived data.
- * Used by archive-internal RRF pipeline which combines all sources.
+ * Gather archive/evidence candidates persisted outside canonical truth tables.
  */
 function gatherCandidates(
   store: SqliteTruthKernelStorage,
   opts: SearchOptions,
 ): SearchCandidate[] {
   const limit = (opts.limit ?? 20) * 3;
-  const candidates = gatherTruthCandidates(store, limit);
+  const candidates: SearchCandidate[] = [];
 
-  // Evidence bundles (archive-derived)
+  // Persisted evidence bundles from archive sources.
   for (const bundle of store.listEvidenceBundles(limit)) {
     for (const item of bundle.items) {
+      const sourceSystem = toSourceSystem(
+        (item.metadata as Record<string, unknown>).source_system,
+        'local-archive',
+      );
+      if (!ARCHIVE_SOURCE_SYSTEMS.has(sourceSystem)) {
+        continue;
+      }
       candidates.push({
         id: item.evidence_id,
         title: item.title,
         content: `${item.title}\n${item.excerpt}`,
         source_type: 'evidence',
-        source_system: String((item.metadata as Record<string, unknown>).source_system ?? 'archive'),
-        source_kind: String((item.metadata as Record<string, unknown>).source_kind ?? 'evidence'),
+        source_system: sourceSystem,
+        source_kind: toSourceKind(
+          (item.metadata as Record<string, unknown>).source_kind,
+          'evidence',
+        ),
         confidence: item.confidence,
         graph_depth: null,
         graph_weight: null,
@@ -257,23 +253,15 @@ function gatherCandidates(
     }
   }
 
-  // Knowledge pages (derived)
-  for (const page of store.listKnowledgePages(limit)) {
-    candidates.push({
-      id: page.page.page_id,
-      title: page.page.title,
-      content: page.summary_markdown,
-      source_type: 'page',
-      source_system: 'truth-kernel',
-      source_kind: 'page',
-      confidence: null,
-      graph_depth: null,
-      graph_weight: null,
-      metadata: { page_type: page.page.page_type, status: page.page.status },
-    });
-  }
-
   return candidates;
+}
+
+function dedupeCandidates(candidates: readonly SearchCandidate[]): SearchCandidate[] {
+  const deduped = new Map<string, SearchCandidate>();
+  for (const candidate of candidates) {
+    deduped.set(candidate.id, candidate);
+  }
+  return [...deduped.values()];
 }
 
 /**
@@ -434,83 +422,147 @@ function rankByLexical(
     .map((s) => s.candidate);
 }
 
-function tokenize(query: string): string[] {
-  return query
-    .split(/\s+/)
-    .map((t) => t.trim().toLowerCase())
-    .filter((t) => t.length > 1); // Skip single-char tokens
-}
-
 function matchesTokens(text: string, tokens: readonly string[]): boolean {
   const haystack = text.toLowerCase();
   return tokens.some((token) => haystack.includes(token));
 }
 
+interface CandidateProvenance {
+  readonly source_system: SourceSystem;
+  readonly source_kind: SourceKind;
+  readonly source_ref: string;
+  readonly confidence: number | null;
+}
+
+function safeParseState(stateJson: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(stateJson);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function resolveCandidateProvenance(
+  provenanceRecord: ReturnType<SqliteTruthKernelStorage['getProvenance']> | undefined,
+  fallbackKind: SourceKind,
+  fallbackRef: string,
+): CandidateProvenance {
+  return {
+    source_system: provenanceRecord?.source_system ?? 'truth-kernel',
+    source_kind: provenanceRecord?.source_kind ?? fallbackKind,
+    source_ref: provenanceRecord?.source_ref ?? fallbackRef,
+    confidence: provenanceRecord?.confidence ?? null,
+  };
+}
+
 function toEntityCandidate(
+  store: SqliteTruthKernelStorage,
   entity: TruthEntityRecord,
 ): SearchCandidate {
+  const entityState = safeParseState(entity.state_json);
+  const provenanceId = typeof entityState.provenance_id === 'string' ? entityState.provenance_id : null;
+  const provenance = resolveCandidateProvenance(
+    provenanceId ? store.getProvenance(provenanceId) : undefined,
+    'entity',
+    `truth:${entity.entity_id}`,
+  );
   return {
     id: entity.entity_id,
     title: entity.name,
     content: `${entity.name} (${entity.entity_type}): ${entity.summary}`,
     source_type: 'entity',
-    source_system: 'truth-kernel',
-    source_kind: 'entity',
-    confidence: null,
+    source_system: provenance.source_system,
+    source_kind: provenance.source_kind,
+    confidence: provenance.confidence,
     graph_depth: null,
     graph_weight: null,
-    metadata: { entity_type: entity.entity_type },
+    metadata: {
+      entity_type: entity.entity_type,
+      source_ref: provenance.source_ref,
+    },
   };
 }
 
 function toDecisionCandidate(
+  store: SqliteTruthKernelStorage,
   decision: TruthDecisionRecord,
 ): SearchCandidate {
+  const provenance = resolveCandidateProvenance(
+    decision.provenance_id ? store.getProvenance(decision.provenance_id) : undefined,
+    'decision',
+    `truth:${decision.decision_id}`,
+  );
   return {
     id: decision.decision_id,
     title: decision.title,
     content: `${decision.title}: ${decision.statement}`,
     source_type: 'decision',
-    source_system: 'truth-kernel',
-    source_kind: 'decision',
-    confidence: null,
+    source_system: provenance.source_system,
+    source_kind: provenance.source_kind,
+    confidence: provenance.confidence,
     graph_depth: null,
     graph_weight: null,
-    metadata: { scope_entity_id: decision.scope_entity_id },
+    metadata: {
+      scope_entity_id: decision.scope_entity_id,
+      source_ref: provenance.source_ref,
+    },
   };
 }
 
 function toPreferenceCandidate(
+  store: SqliteTruthKernelStorage,
   preference: TruthPreferenceRecord,
 ): SearchCandidate {
+  const provenance = resolveCandidateProvenance(
+    preference.provenance_id ? store.getProvenance(preference.provenance_id) : undefined,
+    'preference',
+    `truth:${preference.preference_id}`,
+  );
   return {
     id: preference.preference_id,
     title: `${preference.key}=${preference.value}`,
     content: `Preference ${preference.key}=${preference.value} (${preference.strength}) for ${preference.subject_ref ?? 'global'}`,
     source_type: 'preference',
-    source_system: 'truth-kernel',
-    source_kind: 'preference',
-    confidence: null,
+    source_system: provenance.source_system,
+    source_kind: provenance.source_kind,
+    confidence: provenance.confidence,
     graph_depth: null,
     graph_weight: null,
-    metadata: { strength: preference.strength, subject_ref: preference.subject_ref },
+    metadata: {
+      strength: preference.strength,
+      subject_ref: preference.subject_ref,
+      source_ref: provenance.source_ref,
+    },
   };
 }
 
 function toMemoryCandidate(
+  store: SqliteTruthKernelStorage,
   memory: TruthPromotedMemoryRecord,
 ): SearchCandidate {
+  const provenance = resolveCandidateProvenance(
+    memory.provenance_id ? store.getProvenance(memory.provenance_id) : undefined,
+    'memory',
+    `truth:${memory.memory_id}`,
+  );
   return {
     id: memory.memory_id,
     title: memory.summary,
     content: `${memory.summary}\n${memory.content}`,
     source_type: 'memory',
-    source_system: 'truth-kernel',
-    source_kind: 'memory',
-    confidence: null,
+    source_system: provenance.source_system,
+    source_kind: provenance.source_kind,
+    confidence: provenance.confidence,
     graph_depth: null,
     graph_weight: null,
-    metadata: { memory_type: memory.memory_type, access_tier: memory.access_tier },
+    metadata: {
+      memory_type: memory.memory_type,
+      access_tier: memory.access_tier,
+      source_ref: provenance.source_ref,
+    },
   };
 }
 
@@ -529,7 +581,7 @@ function loadTruthDirectCandidates(
       const entity = store.getEntity(hit.source_id);
       if (!entity) continue;
       seen.add(hit.source_id);
-      candidates.push(toEntityCandidate(entity));
+      candidates.push(toEntityCandidate(store, entity));
       continue;
     }
 
@@ -537,14 +589,14 @@ function loadTruthDirectCandidates(
       const decision = store.getDecision(hit.source_id);
       if (!decision) continue;
       seen.add(hit.source_id);
-      candidates.push(toDecisionCandidate(decision));
+      candidates.push(toDecisionCandidate(store, decision));
       continue;
     }
 
     const memory = store.getPromotedMemory(hit.source_id);
     if (!memory) continue;
     seen.add(hit.source_id);
-    candidates.push(toMemoryCandidate(memory));
+    candidates.push(toMemoryCandidate(store, memory));
   }
 
   for (const preference of store.listActivePreferences(40)) {
@@ -556,7 +608,7 @@ function loadTruthDirectCandidates(
       continue;
     }
     seen.add(preference.preference_id);
-    candidates.push(toPreferenceCandidate(preference));
+    candidates.push(toPreferenceCandidate(store, preference));
   }
 
   return candidates;

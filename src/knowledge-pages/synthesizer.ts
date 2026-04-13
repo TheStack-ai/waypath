@@ -1,14 +1,16 @@
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import type { SqliteTruthKernelStorage } from '../jarvis_fusion/truth-kernel/storage.js';
+import { createJcpLiveReader, type JcpLiveReader } from '../adapters/jcp/index.js';
 import type { StoredKnowledgePage } from '../contracts/index.js';
+import { bulletSection, uniqueStrings } from '../shared/text.js';
+import { nowIso } from '../shared/time.js';
+import type { SqliteTruthKernelStorage } from '../jarvis_fusion/truth-kernel/storage.js';
 import type { KnowledgePageType } from '../jarvis_fusion/contracts.js';
 import type { PageSynthesisInput, PageRefreshResult } from './types.js';
 import { expandGraphContext } from '../ontology-support/index.js';
-import { createJcpLiveReader } from '../adapters/jcp/index.js';
 
-function nowIso(): string {
-  return new Date().toISOString();
+export interface PageSynthesisRuntimeOptions {
+  readonly jcpLiveReader?: JcpLiveReader;
 }
 
 // ── File-based page persistence ──
@@ -80,20 +82,8 @@ function readPageFile(store: SqliteTruthKernelStorage, pageId: string): string |
   return match ? content.slice(match[0].length) : content;
 }
 
-function uniqueStrings(values: readonly string[]): string[] {
-  return [...new Set(values.map((v) => v.trim()).filter((v) => v.length > 0))];
-}
-
 function normalizeText(value: string | null | undefined): string {
   return (value ?? '').replace(/\s+/gu, ' ').trim();
-}
-
-function bulletSection(title: string, items: readonly string[]): string[] {
-  return [
-    `## ${title}`,
-    ...(items.length > 0 ? items : ['- none']),
-    '',
-  ];
 }
 
 function pageIdForEntity(entityId: string): string {
@@ -108,12 +98,14 @@ function crossReferenceSection(items: readonly string[]): string[] {
   return bulletSection('Cross References', items);
 }
 
-function buildJcpProjectContext(projectName: string): {
+function buildJcpProjectContext(
+  projectName: string,
+  reader: JcpLiveReader | undefined,
+): {
   readonly decisions: readonly string[];
   readonly memories: readonly string[];
 } {
-  const reader = createJcpLiveReader();
-  if (!reader.health().ok) {
+  if (!reader || !reader.health().ok) {
     return { decisions: [], memories: [] };
   }
 
@@ -167,10 +159,11 @@ function buildBundleEvidenceSection(
 export function synthesizePage(
   store: SqliteTruthKernelStorage,
   input: PageSynthesisInput,
+  options: PageSynthesisRuntimeOptions = {},
 ): StoredKnowledgePage {
   switch (input.page_type) {
     case 'project_page':
-      return synthesizeProjectPage(store, input);
+      return synthesizeProjectPage(store, input, options);
     case 'entity_page':
       return synthesizeEntityPage(store, input);
     case 'decision_page':
@@ -184,7 +177,11 @@ export function synthesizePage(
   }
 }
 
-function synthesizeProjectPage(store: SqliteTruthKernelStorage, input: PageSynthesisInput): StoredKnowledgePage {
+function synthesizeProjectPage(
+  store: SqliteTruthKernelStorage,
+  input: PageSynthesisInput,
+  options: PageSynthesisRuntimeOptions,
+): StoredKnowledgePage {
   const projectId = input.anchor_entity_id ?? `project:${input.project ?? input.subject ?? 'unknown'}`;
   const entity = store.getEntity(projectId);
   const projectName = entity?.name ?? input.project ?? input.subject ?? 'Unknown Project';
@@ -213,7 +210,7 @@ function synthesizeProjectPage(store: SqliteTruthKernelStorage, input: PageSynth
   const stateJson = entity ? safeParseJson(entity.state_json) : {};
   const objective = stateJson.objective ?? '';
   const activeTask = stateJson.activeTask ?? '';
-  const jcpContext = buildJcpProjectContext(projectName);
+  const jcpContext = buildJcpProjectContext(projectName, options.jcpLiveReader);
 
   // Evidence bundles related to this project
   const evidenceBundles = store.listEvidenceBundles(5);
@@ -512,7 +509,11 @@ function synthesizeSessionBrief(store: SqliteTruthKernelStorage, input: PageSynt
  * Refresh an existing knowledge page by re-synthesizing from current truth state.
  * Updates both the file and DB (dual write).
  */
-export function refreshPage(store: SqliteTruthKernelStorage, pageId: string): PageRefreshResult {
+export function refreshPage(
+  store: SqliteTruthKernelStorage,
+  pageId: string,
+  options: PageSynthesisRuntimeOptions = {},
+): PageRefreshResult {
   const existing = store.getKnowledgePage(pageId);
   if (!existing) {
     return { page_id: pageId, previous_status: 'draft', new_status: 'draft', refreshed: false };
@@ -529,7 +530,7 @@ export function refreshPage(store: SqliteTruthKernelStorage, pageId: string): Pa
     linked_evidence_bundle_ids: existing.linked_evidence_bundle_ids,
   };
 
-  const refreshed = synthesizePage(store, input);
+  const refreshed = synthesizePage(store, input, options);
 
   // Dual write: update DB status + regenerate file
   const updated: StoredKnowledgePage = {

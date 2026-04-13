@@ -9,6 +9,11 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { chunkText } from '../../archive-kernel/chunker/index.js';
+import {
+  parseSourceKind,
+  parseSourceSystem,
+  type SourceKind,
+} from '../../contracts/index.js';
 import type {
   ArchiveHealth,
   ArchiveProvider,
@@ -18,12 +23,14 @@ import type {
   EvidenceItem,
   JsonObject,
 } from '../../jarvis_fusion/contracts.js';
+import { tokenize } from '../../shared/text.js';
+import { nowIso } from '../../shared/time.js';
 
 const DEFAULT_LIMIT = 10;
 const DEFAULT_MEMPALACE_BASE_PATH = join(homedir(), 'claude-telegram', 'memory');
 const CHUNK_SUFFIX = '#chunk:';
 
-type SourceKind = 'daily' | 'person' | 'project' | 'research' | 'knowledge';
+type MemPalaceSourceKind = Extract<SourceKind, 'daily' | 'person' | 'project' | 'research' | 'knowledge'>;
 
 interface IndexedChunk {
   readonly index: number;
@@ -35,7 +42,7 @@ interface IndexedChunk {
 interface IndexedFileRecord {
   readonly absolutePath: string;
   readonly relativePath: string;
-  readonly sourceKind: SourceKind;
+  readonly sourceKind: MemPalaceSourceKind;
   readonly title: string;
   readonly content: string;
   readonly mtimeMs: number;
@@ -49,21 +56,8 @@ interface RankedEvidenceItem {
   readonly score: number;
 }
 
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
 function normalizeQuery(value: string): string {
   return value.trim();
-}
-
-function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .match(/[\p{L}\p{N}_-]+/gu)
-    ?.map((token) => token.trim())
-    .filter((token) => token.length > 0)
-    ?? [];
 }
 
 function metadataStringValue(metadata: JsonObject, key: string): string | null {
@@ -76,8 +70,8 @@ function passesFilters(item: EvidenceItem, filters: ArchiveSearchFilters | undef
     return true;
   }
 
-  const sourceSystem = metadataStringValue(item.metadata, 'source_system');
-  const sourceKind = metadataStringValue(item.metadata, 'source_kind');
+  const sourceSystem = parseSourceSystem(metadataStringValue(item.metadata, 'source_system'));
+  const sourceKind = parseSourceKind(metadataStringValue(item.metadata, 'source_kind'));
 
   if (filters.sourceSystems && (!sourceSystem || !filters.sourceSystems.includes(sourceSystem))) {
     return false;
@@ -140,7 +134,7 @@ function excerptFromChunk(text: string): string {
 }
 
 function classifySource(relativePath: string): {
-  readonly sourceKind: SourceKind;
+  readonly sourceKind: MemPalaceSourceKind;
   readonly date: string | null;
   readonly entityName: string | null;
 } {

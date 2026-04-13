@@ -148,14 +148,36 @@ export function testContentHashKeyOrderIndependent(): void {
 export function testSearchTruthKernel(): void {
   const store = createSeededStore();
   try {
+    const ts = nowIso();
+    store.upsertEvidenceBundle({
+      bundle_id: 'bundle:archive:sqlite',
+      query: 'SQLite local-first',
+      generated_at: ts,
+      items: [
+        {
+          evidence_id: 'evidence:mempalace:sqlite',
+          source_ref: 'mempalace://projects/alpha.md',
+          title: 'SQLite archive note',
+          excerpt: 'SQLite local-first archive evidence from MemPalace.',
+          observed_at: ts,
+          confidence: 0.9,
+          metadata: {
+            source_system: 'mempalace',
+            source_kind: 'project',
+          },
+        },
+      ],
+    });
+
     const results = searchTruthKernel('SQLite local-first', { store });
 
     if (results.length === 0) throw new Error('Expected search results for "SQLite local-first"');
-
-    // SQLite entity and decision should rank high
-    const ids = results.map((r) => r.candidate.id);
-    const hasSqlite = ids.some((id) => id.includes('sqlite'));
-    if (!hasSqlite) throw new Error(`Expected SQLite-related result in top results. Got: ${ids.join(', ')}`);
+    const sourceSystems = new Set(results.map((result) => result.candidate.source_system));
+    if (sourceSystems.has('truth-kernel')) {
+      throw new Error('searchTruthKernel should not read canonical truth tables');
+    }
+    const hasSqliteArchive = results.some((result) => result.candidate.title.includes('SQLite archive note'));
+    if (!hasSqliteArchive) throw new Error('Expected archive evidence to be searchable');
   } finally {
     store.close();
   }
@@ -164,13 +186,42 @@ export function testSearchTruthKernel(): void {
 export function testSearchWithGraphScoring(): void {
   const store = createSeededStore();
   try {
-    // Add relationships to create graph context
     const ts = nowIso();
-    store.upsertRelationship({ relationship_id: 'r:alpha-sqlite', from_entity_id: 'project:alpha', relation_type: 'uses', to_entity_id: 'tool:sqlite', weight: 1, status: 'active', provenance_id: null, created_at: ts, updated_at: ts });
+    store.upsertEvidenceBundle({
+      bundle_id: 'bundle:archive:database',
+      query: 'database',
+      generated_at: ts,
+      items: [
+        {
+          evidence_id: 'evidence:mempalace:scoped',
+          source_ref: 'mempalace://projects/alpha.md',
+          title: 'Scoped database evidence',
+          excerpt: 'database workflow tied to alpha project',
+          observed_at: ts,
+          confidence: 0.8,
+          metadata: {
+            source_system: 'mempalace',
+            source_kind: 'project',
+            subject_ref: 'project:alpha',
+          },
+        },
+        {
+          evidence_id: 'evidence:mempalace:unscoped',
+          source_ref: 'mempalace://projects/other.md',
+          title: 'Generic database evidence',
+          excerpt: 'database workflow with no graph linkage',
+          observed_at: ts,
+          confidence: 0.8,
+          metadata: {
+            source_system: 'mempalace',
+            source_kind: 'project',
+          },
+        },
+      ],
+    });
 
     const graphDepths = new Map([
       ['project:alpha', 0],
-      ['tool:sqlite', 1],
     ]);
 
     const results = searchTruthKernel('database', {
@@ -179,8 +230,15 @@ export function testSearchWithGraphScoring(): void {
       graphDepths,
     });
 
-    // With graph scoring, SQLite should rank higher because it's depth 1 from seed
     if (results.length === 0) throw new Error('Expected results with graph scoring');
+    const scopedIndex = results.findIndex((result) => result.candidate.id === 'evidence:mempalace:scoped');
+    const unscopedIndex = results.findIndex((result) => result.candidate.id === 'evidence:mempalace:unscoped');
+    if (scopedIndex === -1 || unscopedIndex === -1) {
+      throw new Error('Expected both scoped and unscoped archive evidence in combined results');
+    }
+    if (scopedIndex >= unscopedIndex) {
+      throw new Error(`Expected scoped archive evidence to outrank unscoped evidence, got ${scopedIndex} >= ${unscopedIndex}`);
+    }
   } finally {
     store.close();
   }
@@ -256,16 +314,12 @@ export function testQueryTruthDirectNoRrf(): void {
 export function testTruthFirstRecallSufficiency(): void {
   const store = createSeededStore();
   try {
-    // Query that should find enough truth results (>= 3)
     const truthResults = queryTruthDirect('alpha', { store });
-
-    // 'alpha' matches project entity, and its scoped decisions/memories
     if (truthResults.length < 1) throw new Error('Expected truth results for project "alpha"');
 
-    // Archive RRF should also work
     const archiveResults = searchTruthKernel('alpha', { store });
-    if (archiveResults.length < truthResults.length) {
-      throw new Error('Archive RRF should return at least as many results as truth-direct');
+    if (archiveResults.length !== 0) {
+      throw new Error('Archive recall should not surface truth-table matches without archive evidence');
     }
   } finally {
     store.close();

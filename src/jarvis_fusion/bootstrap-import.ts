@@ -8,10 +8,7 @@ import {
 } from './source-readers-local.js';
 import type { BootstrapImportManifest, BootstrapImportResult, SourceReader } from './source-readers-contracts.js';
 import { SqliteTruthKernelStorage } from './truth-kernel/index.js';
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
+import { nowIso } from '../shared/time.js';
 
 function buildReaders(manifest: BootstrapImportManifest, project: string): SourceReader[] {
   return manifest.reader_names.map((name) => {

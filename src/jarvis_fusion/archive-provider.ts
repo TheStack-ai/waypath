@@ -1,19 +1,29 @@
-import type {
-  EvidenceBundle,
-  EvidenceItem,
-  RecallWeightOverrides,
+import {
+  parseSourceKind,
+  parseSourceSystem,
+  toSourceKind,
+  toSourceSystem,
+  type EvidenceBundle,
+  type EvidenceItem,
+  type RecallWeightOverrides,
+  type SourceKind,
+  type SourceSystem,
 } from '../contracts/index.js';
 import { queryTruthDirect, searchTruthKernel, type RankedList } from '../archive-kernel/search/index.js';
 import type { SearchCandidate } from '../archive-kernel/search/index.js';
 import { rrfFusion } from '../archive-kernel/search/rrf.js';
 import { createJcpLiveReader, type JcpLiveReader } from '../adapters/jcp/index.js';
+import { MemPalaceArchiveProvider } from '../adapters/mempalace/index.js';
 import type {
   TruthDecisionRecord,
   TruthEntityRecord,
   TruthPreferenceRecord,
   TruthPromotedMemoryRecord,
 } from './contracts.js';
+import { probeLocalSourceAdapters } from './source-readers-local.js';
 import type { SqliteTruthKernelStorage } from './truth-kernel/index.js';
+import { slugify } from '../shared/text.js';
+import { nowIso } from '../shared/time.js';
 
 export interface ArchiveSearchQuery {
   readonly query: string;
@@ -21,8 +31,8 @@ export interface ArchiveSearchQuery {
 }
 
 export interface ArchiveSearchFilters {
-  readonly sourceSystems?: readonly string[];
-  readonly sourceKinds?: readonly string[];
+  readonly sourceSystems?: readonly SourceSystem[];
+  readonly sourceKinds?: readonly SourceKind[];
   readonly minConfidence?: number;
 }
 
@@ -44,13 +54,11 @@ export interface LocalArchiveRuntimeOptions {
   readonly jcpLiveReader?: JcpLiveReader;
 }
 
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
-function slugify(value: string): string {
-  return value.replace(/\s+/g, '-').toLowerCase() || 'empty';
-}
+const ARCHIVE_SOURCE_SYSTEMS = new Set<SourceSystem>([
+  'jarvis-memory-db',
+  'mempalace',
+  'local-archive',
+]);
 
 function metadataStringValue(metadata: Record<string, unknown>, key: string): string | null {
   const value = metadata[key];
@@ -181,8 +189,8 @@ function collectStoreEvidence(store: SqliteTruthKernelStorage): EvidenceItem[] {
 function passesFilters(item: EvidenceItem, filters: ArchiveSearchFilters | undefined): boolean {
   if (!filters) return true;
 
-  const sourceSystem = metadataStringValue(item.metadata, 'source_system');
-  const sourceKind = metadataStringValue(item.metadata, 'source_kind');
+  const sourceSystem = parseSourceSystem(metadataStringValue(item.metadata, 'source_system'));
+  const sourceKind = parseSourceKind(metadataStringValue(item.metadata, 'source_kind'));
 
   if (filters.sourceSystems && (!sourceSystem || !filters.sourceSystems.includes(sourceSystem))) {
     return false;
@@ -224,7 +232,11 @@ function safeParseState(stateJson: string): Record<string, unknown> {
   }
 }
 
-function makeBundleId(query: string): string {
+function makeArchiveBundleId(query: string): string {
+  return `bundle:archive:${slugify(query)}:${nowIso()}`;
+}
+
+function makeTruthBundleId(query: string): string {
   return `bundle:truth:${slugify(query)}:${nowIso()}`;
 }
 
@@ -244,6 +256,42 @@ function buildEvidenceLookup(items: readonly EvidenceItem[]): ReadonlyMap<string
   return lookup;
 }
 
+function isArchiveSourceSystem(sourceSystem: SourceSystem | null): boolean {
+  return sourceSystem !== null && ARCHIVE_SOURCE_SYSTEMS.has(sourceSystem);
+}
+
+function mergeEvidenceLookups(
+  ...lookups: readonly ReadonlyMap<string, EvidenceItem>[]
+): ReadonlyMap<string, EvidenceItem> {
+  const merged = new Map<string, EvidenceItem>();
+  for (const lookup of lookups) {
+    for (const [key, value] of lookup.entries()) {
+      merged.set(key, value);
+    }
+  }
+  return merged;
+}
+
+function toArchiveCandidate(item: EvidenceItem): SearchCandidate {
+  return {
+    id: item.evidence_id,
+    title: item.title,
+    content: item.excerpt,
+    source_type: 'evidence',
+    source_system: toSourceSystem(metadataStringValue(item.metadata, 'source_system'), 'local-archive'),
+    source_kind: toSourceKind(metadataStringValue(item.metadata, 'source_kind'), 'evidence'),
+    confidence: item.confidence,
+    graph_depth: null,
+    graph_weight: null,
+    metadata: {
+      ...item.metadata,
+      evidence_id: item.evidence_id,
+      observed_at: item.observed_at,
+      source_ref: item.source_ref,
+    },
+  };
+}
+
 function toJcpMemoryCandidate(memory: ReturnType<JcpLiveReader['searchMemories']>[number]): SearchCandidate {
   return {
     id: `jcp:memory:${memory.id}`,
@@ -251,14 +299,14 @@ function toJcpMemoryCandidate(memory: ReturnType<JcpLiveReader['searchMemories']
     content: `${memory.description ?? ''}\n${memory.content}`.trim(),
     source_type: 'memory',
     source_system: 'jarvis-memory-db',
-    source_kind: memory.memory_type || 'memory',
+    source_kind: toSourceKind(memory.memory_type, 'memory'),
     confidence: memory.confidence,
     graph_depth: null,
     graph_weight: null,
     metadata: {
       raw_id: memory.id,
       source_system: 'jarvis-memory-db',
-      source_kind: memory.memory_type || 'memory',
+      source_kind: toSourceKind(memory.memory_type, 'memory'),
       source_ref: `jarvis-memory-db:memory:${memory.id}`,
       memory_type: memory.memory_type,
       access_tier: memory.access_tier,
@@ -274,14 +322,14 @@ function toJcpEntityCandidate(entity: ReturnType<JcpLiveReader['searchEntities']
     content: `${entity.name} (${entity.entity_type})\n${entity.properties ?? ''}`.trim(),
     source_type: 'entity',
     source_system: 'jarvis-memory-db',
-    source_kind: entity.entity_type || 'entity',
+    source_kind: toSourceKind(entity.entity_type, 'entity'),
     confidence: entity.confidence,
     graph_depth: null,
     graph_weight: null,
     metadata: {
       raw_id: entity.id,
       source_system: 'jarvis-memory-db',
-      source_kind: entity.entity_type || 'entity',
+      source_kind: toSourceKind(entity.entity_type, 'entity'),
       source_ref: `jarvis-memory-db:entity:${entity.id}`,
       entity_type: entity.entity_type,
       properties: entity.properties,
@@ -290,16 +338,19 @@ function toJcpEntityCandidate(entity: ReturnType<JcpLiveReader['searchEntities']
 }
 
 function toCandidateEvidenceItem(candidate: SearchCandidate): EvidenceItem {
+  const metadata = candidate.metadata as Record<string, unknown>;
   return {
-    evidence_id: `evidence:${candidate.source_type}:${candidate.id}`,
-    source_ref: typeof candidate.metadata.source_ref === 'string'
-      ? candidate.metadata.source_ref
+    evidence_id: typeof metadata.evidence_id === 'string'
+      ? metadata.evidence_id
+      : `evidence:${candidate.source_type}:${candidate.id}`,
+    source_ref: typeof metadata.source_ref === 'string'
+      ? metadata.source_ref
       : `${candidate.source_system}:${candidate.id}`,
     title: candidate.title,
     excerpt: candidate.content,
-    observed_at: null,
+    observed_at: typeof metadata.observed_at === 'string' ? metadata.observed_at : null,
     confidence: candidate.confidence,
-    metadata: candidate.metadata as Record<string, unknown>,
+    metadata,
   };
 }
 
@@ -307,11 +358,12 @@ function buildJcpRankedLists(
   query: string,
   reader: JcpLiveReader | undefined,
 ): {
+  readonly candidates: readonly SearchCandidate[];
   readonly rankedLists: readonly RankedList[];
   readonly evidenceByCandidateId: ReadonlyMap<string, EvidenceItem>;
 } {
   if (!reader || !reader.health().ok) {
-    return { rankedLists: [], evidenceByCandidateId: new Map() };
+    return { candidates: [], rankedLists: [], evidenceByCandidateId: new Map() };
   }
 
   const memoryCandidates = reader.searchMemories(query, 8).map(toJcpMemoryCandidate);
@@ -329,24 +381,35 @@ function buildJcpRankedLists(
     rankedLists.push({ dimension: 'keyword', results: entityCandidates });
   }
 
-  return { rankedLists, evidenceByCandidateId };
+  return {
+    candidates: [...memoryCandidates, ...entityCandidates],
+    rankedLists,
+    evidenceByCandidateId,
+  };
 }
 
-/** Minimum number of truth-direct results to consider "sufficient" */
-const TRUTH_SUFFICIENCY_THRESHOLD = 3;
+function buildMemPalaceEvidenceItems(query: string): readonly EvidenceItem[] {
+  const probe = probeLocalSourceAdapters().find((source) => source.reader === 'mempalace');
+  if (!probe?.path || !probe.available) {
+    return [];
+  }
 
-/**
- * Build an evidence bundle using truth-first recall.
- *
- * Flow:
- * 1. Try queryTruthDirect() first — canonical truth data, no RRF
- * 2. If sufficient results (>= TRUTH_SUFFICIENCY_THRESHOLD), return them
- * 3. If insufficient, fall back to archive-internal RRF fusion
- *
- * This enforces the truth-first / archive-second principle:
- * RRF is only used for archive-internal result merging, never at the truth level.
- */
-export function buildLocalArchiveBundle(
+  const provider = new MemPalaceArchiveProvider(probe.path);
+  if (!provider.healthSync().ok) {
+    return [];
+  }
+
+  const bundle = provider.searchSync({ query, limit: 8 });
+  return bundle.items.map((item) => ({
+    ...item,
+    metadata: {
+      ...item.metadata,
+      source_system: 'mempalace',
+    },
+  }));
+}
+
+export function buildTruthDirectBundle(
   query: string,
   store?: SqliteTruthKernelStorage,
   options: LocalArchiveRuntimeOptions = {},
@@ -355,72 +418,72 @@ export function buildLocalArchiveBundle(
 
   if (!store) {
     return {
-      bundle_id: `bundle:${slugify(query)}`,
-      query,
+      bundle_id: makeTruthBundleId(normalizedQuery),
+      query: normalizedQuery,
       generated_at: nowIso(),
-      items: query.trim().length === 0
-        ? []
-        : [
-            {
-              evidence_id: `evidence:${slugify(query)}`,
-              source_ref: `local:${query}`,
-              title: `Local recall placeholder for ${query}`,
-              excerpt: `No external archive is wired yet, so this local provider returns a deterministic placeholder for ${query}.`,
-              observed_at: null,
-              confidence: 0.2,
-              metadata: { provider: 'local-archive-provider' },
-            },
-          ],
+      items: [],
     };
   }
 
   const evidenceItems = collectStoreEvidence(store);
   const truthEvidenceLookup = buildEvidenceLookup(evidenceItems);
-  const jcpReader = options.jcpLiveReader ?? createJcpLiveReader();
-  const jcpRanked = buildJcpRankedLists(normalizedQuery, jcpReader);
-
-  // Step 1: Truth-first — direct query against canonical truth (no RRF)
   const truthResults = queryTruthDirect(normalizedQuery, {
     store,
     recallWeights: options.weights,
   });
 
-  // Step 2: Check sufficiency — if truth has enough results, return them directly
-  let searchResults = truthResults;
-  if (truthResults.length < TRUTH_SUFFICIENCY_THRESHOLD) {
-    // Step 3: Fall back to archive-internal RRF fusion (combines all sources including derived data)
-    const archiveResults = searchTruthKernel(normalizedQuery, {
-      store,
-      recallWeights: options.weights,
-      extraRankedLists: jcpRanked.rankedLists,
-    });
-    // Merge: truth results first (priority), then archive results that aren't duplicates
-    const truthIds = new Set(truthResults.map((r) => r.candidate.id));
-    searchResults = [
-      ...truthResults,
-      ...archiveResults.filter((r) => !truthIds.has(r.candidate.id)),
-    ];
-  } else if (jcpRanked.rankedLists.length > 0) {
-    const truthIds = new Set(truthResults.map((result) => result.candidate.id));
-    const jcpResults = rrfFusion(jcpRanked.rankedLists);
-    searchResults = [
-      ...truthResults,
-      ...jcpResults.filter((result) => !truthIds.has(result.candidate.id)),
-    ];
-  }
-
-  // Convert ScoredResults to EvidenceItems.
-  // Evidence items from external sources (JCP, MemPalace) are included.
-  // Pure truth-kernel items without external provenance are tagged so
-  // the facade can separate them into truth_highlights vs evidence_appendix.
-  const pipelineItems: EvidenceItem[] = searchResults.map((sr) => {
-    const existing = truthEvidenceLookup.get(sr.candidate.id) ?? jcpRanked.evidenceByCandidateId.get(sr.candidate.id);
-    if (existing) return existing;
-    return toCandidateEvidenceItem(sr.candidate);
-  });
+  const pipelineItems: EvidenceItem[] = truthResults.map((result) =>
+    truthEvidenceLookup.get(result.candidate.id) ?? toCandidateEvidenceItem(result.candidate),
+  );
 
   return {
-    bundle_id: makeBundleId(normalizedQuery),
+    bundle_id: makeTruthBundleId(normalizedQuery),
+    query: normalizedQuery,
+    generated_at: nowIso(),
+    items: dedupEvidenceItems(pipelineItems).slice(0, 8),
+  };
+}
+
+/**
+ * Build an archive evidence bundle from live/archive sources only.
+ *
+ * Canonical truth recall is intentionally excluded. Truth kernel results are
+ * queried separately via queryTruthDirect()/buildTruthDirectBundle().
+ */
+export function buildLocalArchiveBundle(
+  query: string,
+  store?: SqliteTruthKernelStorage,
+  options: LocalArchiveRuntimeOptions = {},
+): EvidenceBundle {
+  const normalizedQuery = query.trim();
+  const jcpRanked = buildJcpRankedLists(normalizedQuery, options.jcpLiveReader ?? createJcpLiveReader());
+  const mempalaceItems = buildMemPalaceEvidenceItems(normalizedQuery);
+  const mempalaceCandidates = mempalaceItems.map(toArchiveCandidate);
+  const archiveEvidenceLookup = mergeEvidenceLookups(
+    jcpRanked.evidenceByCandidateId,
+    new Map(mempalaceItems.map((item) => [item.evidence_id, item] as const)),
+  );
+  const extraCandidates = [...jcpRanked.candidates, ...mempalaceCandidates];
+  const extraRankedLists: RankedList[] = [
+    ...jcpRanked.rankedLists,
+    ...(mempalaceCandidates.length > 0 ? [{ dimension: 'keyword', results: mempalaceCandidates }] : []),
+  ];
+
+  const searchResults = store
+    ? searchTruthKernel(normalizedQuery, {
+        store,
+        recallWeights: options.weights,
+        extraCandidates,
+        extraRankedLists,
+      })
+    : rrfFusion(extraRankedLists);
+
+  const pipelineItems = searchResults
+    .map((result) => archiveEvidenceLookup.get(result.candidate.id) ?? toCandidateEvidenceItem(result.candidate))
+    .filter((item) => isArchiveSourceSystem(parseSourceSystem(metadataStringValue(item.metadata, 'source_system'))));
+
+  return {
+    bundle_id: makeArchiveBundleId(normalizedQuery),
     query: normalizedQuery,
     generated_at: nowIso(),
     items: dedupEvidenceItems(pipelineItems).slice(0, 8),
@@ -450,7 +513,7 @@ export function createLocalArchiveProvider(
       return {
         ok: true,
         message: store
-          ? `truth-backed local archive provider ready with ${collectStoreEvidence(store).length} evidence item(s)`
+          ? 'local archive provider ready for archive-only recall'
           : 'local archive provider ready',
       };
     },

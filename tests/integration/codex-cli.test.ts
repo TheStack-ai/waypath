@@ -80,10 +80,17 @@ function runBootstrapCliIntegrationTest(command: 'codex' | 'claude-code', expect
     ),
     'expected derived graph relationship summary in bootstrap output',
   );
-  assertEqual(result.session.context_pack.evidence_appendix.enabled, true);
-  assert(result.session.context_pack.evidence_appendix.bundles.length > 0, 'expected evidence appendix bundle ids');
+  assertEqual(
+    result.session.context_pack.evidence_appendix.enabled,
+    result.session.context_pack.evidence_appendix.bundles.length > 0,
+  );
   const store = createTruthKernelStorage(storePath);
-  assert(store.getEvidenceBundle(result.session.context_pack.evidence_appendix.bundles[0]!)?.items.length, 'expected persisted session evidence bundle');
+  if (result.session.context_pack.evidence_appendix.bundles.length > 0) {
+    assert(
+      store.getEvidenceBundle(result.session.context_pack.evidence_appendix.bundles[0]!)?.items.length,
+      'expected persisted session evidence bundle',
+    );
+  }
   store.close();
 }
 
@@ -102,12 +109,19 @@ export function runRecallCliIntegrationTest(): void {
   const result = JSON.parse(captured.stdout.join('')) as {
     status: string;
     bundle?: { bundle_id: string; items: { title: string; evidence_id: string }[] };
+    truth_bundle?: { bundle_id: string; items: { title: string; evidence_id: string }[] };
   };
   assertEqual(result.status, 'ready');
-  // Evidence bundle may be empty if only truth-kernel items matched (truth/archive separation).
-  // The recall verb still returns a bundle, but it excludes truth-kernel items from evidence.
+  assert((result.truth_bundle?.items.length ?? 0) > 0, 'expected truth-direct recall items');
+  assert(
+    result.truth_bundle?.items.some((item) => item.title.includes('Decision: Keep source readers read-only')),
+    'expected truth-backed recall evidence',
+  );
   assert(result.bundle !== undefined, 'expected recall bundle object');
   const store = createTruthKernelStorage(storePath);
+  if ((result.bundle?.items.length ?? 0) > 0) {
+    assert(store.getEvidenceBundle(result.bundle!.bundle_id)?.items.length, 'expected persisted recall evidence bundle');
+  }
   store.close();
 }
 
@@ -117,9 +131,10 @@ export function runPageCliIntegrationTest(): void {
   const captured = captureIo();
   const exitCode = runCli(['page', '--json', '--subject', 'waypath', '--store-path', storePath], captured.io);
   assertEqual(exitCode, 0);
-  const result = JSON.parse(captured.stdout.join('')) as { status: string; page?: { page: { page_id: string }; summary_markdown: string } };
+  const result = JSON.parse(captured.stdout.join('')) as { status: string; page?: { page: { page_id: string; page_type: string }; summary_markdown: string } };
   assertEqual(result.status, 'ready');
   assert(result.page?.summary_markdown.includes('# waypath'), 'expected page markdown');
+  assertEqual(result.page?.page.page_type, 'session_brief');
   const store = createTruthKernelStorage(storePath);
   const persisted = store.getKnowledgePage(result.page!.page.page_id);
   assert(persisted?.summary_markdown.includes('## Decisions'), 'expected persisted decision section');

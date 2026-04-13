@@ -2,9 +2,12 @@ import type {
   ContradictionItem,
   ReviewQueueItem,
   SessionIdentity,
+  SourceKind,
   SourceAnchor,
+  SourceSystem,
   StaleItem,
 } from '../contracts/index.js';
+export type { SourceKind, SourceSystem } from '../contracts/index.js';
 
 export type ISODateTimeString = string;
 export type JsonPrimitive = string | number | boolean | null;
@@ -183,8 +186,8 @@ export interface ArchiveSearchQuery {
 }
 
 export interface ArchiveSearchFilters {
-  readonly sourceSystems?: readonly string[];
-  readonly sourceKinds?: readonly string[];
+  readonly sourceSystems?: readonly SourceSystem[];
+  readonly sourceKinds?: readonly SourceKind[];
   readonly minConfidence?: number;
 }
 

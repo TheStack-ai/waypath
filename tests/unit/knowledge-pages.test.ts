@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createJcpLiveReader } from '../../src/adapters/jcp';
 import { createTruthKernelStorage, ensureTruthKernelSeedData, type SqliteTruthKernelStorage } from '../../src/jarvis_fusion/truth-kernel/index.js';
 import { synthesizePage, refreshPage, markPagesStale, getPageFilePath } from '../../src/knowledge-pages/index.js';
 import { createJcpFixtureDb } from '../helpers/jcp-fixture';
@@ -28,6 +29,8 @@ export function testSynthesizeProjectPage(): void {
       page_type: 'project_page',
       project: 'alpha',
       anchor_entity_id: 'project:alpha',
+    }, {
+      jcpLiveReader: createJcpLiveReader(jcpDbPath),
     });
 
     if (page.page.page_type !== 'project_page') throw new Error(`Expected project_page, got ${page.page.page_type}`);

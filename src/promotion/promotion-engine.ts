@@ -10,19 +10,8 @@ import type {
 } from './types.js';
 import type { TruthPromotionCandidateRecord } from '../jarvis_fusion/contracts.js';
 import { markPagesStale as markPagesStaleKnowledge } from '../knowledge-pages/index.js';
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .trim() || 'empty';
-}
+import { slugify } from '../shared/text.js';
+import { nowIso } from '../shared/time.js';
 
 // Whitelist-validated table name mapping — prevents SQL injection via dynamic table names.
 const VALID_TRUTH_TABLES = new Set(['entities', 'decisions', 'preferences', 'promoted_memories']);
@@ -505,7 +494,7 @@ export function resolveContradiction(
     const provenanceId = `provenance:contradiction-resolve:${resolution.key}:${Date.now()}`;
     store.upsertProvenance({
       provenance_id: provenanceId,
-      source_system: 'promotion-engine',
+      source_system: 'waypath-promotion',
       source_kind: 'contradiction_resolution',
       source_ref: resolution.keep_preference_id,
       observed_at: null,

@@ -1,5 +1,113 @@
 export type HostName = 'codex' | 'claude-code';
 export type ImportMode = 'bootstrap' | 'manual' | 'reimport';
+export type SourceSystem =
+  | 'truth-kernel'
+  | 'jarvis-memory-db'
+  | 'jarvis-brain-db'
+  | 'mempalace'
+  | 'demo-source'
+  | 'waypath-promotion'
+  | 'local-archive';
+export type SourceKind =
+  | 'entity'
+  | 'decision'
+  | 'preference'
+  | 'relationship'
+  | 'memory'
+  | 'database'
+  | 'project_snapshot'
+  | 'decision_snapshot'
+  | 'preference_snapshot'
+  | 'memory_snapshot'
+  | 'import_reader'
+  | 'promotion_review'
+  | 'contradiction_resolution'
+  | 'snapshot'
+  | 'evidence'
+  | 'transcript'
+  | 'note'
+  | 'pointer'
+  | 'observation'
+  | 'daily'
+  | 'person'
+  | 'project'
+  | 'research'
+  | 'knowledge'
+  | 'system'
+  | 'tool'
+  | 'concept'
+  | 'task'
+  | 'event'
+  | 'episodic'
+  | 'semantic'
+  | 'procedural'
+  | 'analytical';
+
+const SOURCE_SYSTEM_SET = new Set<string>([
+  'truth-kernel',
+  'jarvis-memory-db',
+  'jarvis-brain-db',
+  'mempalace',
+  'demo-source',
+  'waypath-promotion',
+  'local-archive',
+]);
+
+const SOURCE_KIND_SET = new Set<string>([
+  'entity',
+  'decision',
+  'preference',
+  'relationship',
+  'memory',
+  'database',
+  'project_snapshot',
+  'decision_snapshot',
+  'preference_snapshot',
+  'memory_snapshot',
+  'import_reader',
+  'promotion_review',
+  'contradiction_resolution',
+  'snapshot',
+  'evidence',
+  'transcript',
+  'note',
+  'pointer',
+  'observation',
+  'daily',
+  'person',
+  'project',
+  'research',
+  'knowledge',
+  'system',
+  'tool',
+  'concept',
+  'task',
+  'event',
+  'episodic',
+  'semantic',
+  'procedural',
+  'analytical',
+]);
+
+export function parseSourceSystem(value: unknown): SourceSystem | null {
+  return typeof value === 'string' && SOURCE_SYSTEM_SET.has(value)
+    ? value as SourceSystem
+    : null;
+}
+
+export function parseSourceKind(value: unknown): SourceKind | null {
+  return typeof value === 'string' && SOURCE_KIND_SET.has(value)
+    ? value as SourceKind
+    : null;
+}
+
+export function toSourceSystem(value: unknown, fallback: SourceSystem): SourceSystem {
+  return parseSourceSystem(value) ?? fallback;
+}
+
+export function toSourceKind(value: unknown, fallback: SourceKind): SourceKind {
+  return parseSourceKind(value) ?? fallback;
+}
 
 export interface SessionIdentity {
   session_id: string;
@@ -16,8 +124,8 @@ export interface SessionFocus {
 }
 
 export interface SourceAnchor {
-  source_system: string;
-  source_kind: string;
+  source_system: SourceSystem;
+  source_kind: SourceKind;
   source_ref: string;
 }
 
@@ -138,7 +246,7 @@ export interface ImportRun {
   manifest_id: string;
   mode: ImportMode;
   imported_at: string;
-  reader_names: string[];
+  reader_names: SourceSystem[];
   source_anchors: SourceAnchor[];
 }
 
@@ -147,7 +255,7 @@ export interface ImportResult {
   status: 'imported';
   mode: ImportMode;
   manifest_id: string;
-  readers: string[];
+  readers: SourceSystem[];
   imported_at: string;
   run: ImportRun;
   store_path: string;
@@ -160,12 +268,12 @@ export interface SourceAdapterEnabledMap {
 }
 
 export interface RecallWeightOverrides {
-  sourceSystems?: Record<string, number>;
-  sourceKinds?: Record<string, number>;
+  sourceSystems?: Partial<Record<SourceSystem, number>>;
+  sourceKinds?: Partial<Record<SourceKind, number>>;
 }
 
 export interface LocalSourceStatusItem {
-  reader: string;
+  reader: SourceSystem;
   available: boolean;
   enabled: boolean;
   path: string | null;

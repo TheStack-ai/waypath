@@ -1,9 +1,9 @@
 import type { AccessTier, EntityType, MemoryType, PromotionAction, TruthStatus } from './contracts.js';
-import type { ImportMode } from '../contracts/index.js';
+import type { ImportMode, SourceKind, SourceSystem } from '../contracts/index.js';
 
 export interface SourceProvenanceInput {
-  readonly source_system: string;
-  readonly source_kind: string;
+  readonly source_system: SourceSystem;
+  readonly source_kind: SourceKind;
   readonly source_ref: string;
   readonly observed_at?: string | null;
   readonly confidence?: number | null;
@@ -73,7 +73,7 @@ export interface ImportedPromotionCandidateInput {
 }
 
 export interface SourceSnapshot {
-  readonly reader_name: string;
+  readonly reader_name: SourceSystem;
   readonly entities: ImportedEntityInput[];
   readonly relationships: ImportedRelationshipInput[];
   readonly decisions: ImportedDecisionInput[];
@@ -83,21 +83,21 @@ export interface SourceSnapshot {
 }
 
 export interface SourceReader {
-  readonly name: string;
+  readonly name: SourceSystem;
   load(): SourceSnapshot;
 }
 
 export interface BootstrapImportManifest {
   readonly manifest_id: string;
   readonly import_mode: ImportMode;
-  readonly reader_names: string[];
+  readonly reader_names: SourceSystem[];
 }
 
 export interface BootstrapImportResult {
   readonly manifest_id: string;
   readonly import_mode: ImportMode;
   readonly imported_at: string;
-  readonly readers: string[];
+  readonly readers: SourceSystem[];
   readonly imported_entities: number;
   readonly imported_relationships: number;
   readonly imported_decisions: number;

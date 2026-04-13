@@ -10,9 +10,10 @@ export function slugify(text: string): string {
 export function tokenize(text: string): string[] {
   return text
     .toLowerCase()
-    .split(/\s+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length > 1);
+    .match(/[\p{L}\p{N}_-]+/gu)
+    ?.map((token) => token.trim())
+    .filter((token) => token.length > 0)
+    ?? [];
 }
 
 export function uniqueStrings(values: readonly string[]): string[] {

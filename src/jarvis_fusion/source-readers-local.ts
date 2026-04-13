@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-import type { SourceAdapterEnabledMap } from '../contracts/index.js';
+import type { SourceAdapterEnabledMap, SourceKind, SourceSystem } from '../contracts/index.js';
 import type { AccessTier, MemoryType } from './contracts.js';
 import type {
   ImportedDecisionInput,
@@ -16,6 +16,8 @@ import type {
   SourceSnapshot,
   SourceProvenanceInput,
 } from './source-readers-contracts.js';
+import { slugify } from '../shared/text.js';
+import { nowIso } from '../shared/time.js';
 
 const DEFAULT_JARVIS_DB_PATH = join(homedir(), '.claude', 'jarvis', 'data', 'jarvis.db');
 const DEFAULT_JARVIS_BRAIN_DB_PATH = join(homedir(), '.jarvis-orb', 'brain.db');
@@ -28,14 +30,6 @@ const DEFAULT_MEMPALACE_PATHS = [
 ] as const;
 
 type SqliteRow = Record<string, unknown>;
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
-function slugify(value: string): string {
-  return value.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'empty';
-}
 
 function safeJsonObject(value: unknown): Record<string, unknown> {
   if (typeof value !== 'string' || value.trim().length === 0) {
@@ -102,8 +96,8 @@ function prefixedId(prefix: string, kind: string, rawId: string): string {
 }
 
 function makeProvenance(
-  sourceSystem: string,
-  sourceKind: string,
+  sourceSystem: SourceSystem,
+  sourceKind: SourceKind,
   sourceRef: string,
   observedAt: string | null | undefined,
   confidence: number | null | undefined,
@@ -218,7 +212,7 @@ export function localJarvisBrainReaderAvailable(): boolean {
 }
 
 export interface LocalSourceProbe {
-  readonly reader: string;
+  readonly reader: SourceSystem;
   readonly available: boolean;
   readonly enabled: boolean;
   readonly path: string | null;
@@ -650,8 +644,8 @@ export function createJarvisBrainDbSourceReader(project = 'waypath'): SourceRead
   };
 }
 
-export function detectAvailableLocalReaderNames(options: LocalSourceAdapterOptions = {}): string[] {
-  const names: string[] = [];
+export function detectAvailableLocalReaderNames(options: LocalSourceAdapterOptions = {}): SourceSystem[] {
+  const names: SourceSystem[] = [];
   if (localJarvisReaderAvailable() && isSourceAdapterEnabled('jarvis-memory-db', options)) {
     names.push('jarvis-memory-db');
   }

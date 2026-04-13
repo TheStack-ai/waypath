@@ -1,12 +1,12 @@
-import type { RecallWeightOverrides } from '../../contracts/index.js';
+import type { RecallWeightOverrides, SourceKind, SourceSystem } from '../../contracts/index.js';
 
 export interface RetrievalCandidate {
   readonly title?: string;
   readonly excerpt?: string;
   readonly sourceRef?: string;
   readonly provenanceConfidence?: number | null | undefined;
-  readonly sourceSystem?: string | null | undefined;
-  readonly sourceKind?: string | null | undefined;
+  readonly sourceSystem?: SourceSystem | null | undefined;
+  readonly sourceKind?: SourceKind | null | undefined;
   readonly graphRelevance?: number | null | undefined;
   readonly baseScore?: number | null | undefined;
 }
@@ -46,22 +46,22 @@ export interface RetrievalStrategy<TCandidate extends RetrievalCandidate = Retri
 }
 
 export interface RetrievalWeightProfile {
-  readonly sourceSystems?: Readonly<Record<string, number>>;
-  readonly sourceKinds?: Readonly<Record<string, number>>;
+  readonly sourceSystems?: Readonly<Partial<Record<SourceSystem, number>>>;
+  readonly sourceKinds?: Readonly<Partial<Record<SourceKind, number>>>;
   readonly missingSourceSystemWeight?: number;
   readonly unknownSourceSystemWeight?: number;
   readonly missingSourceKindWeight?: number;
   readonly unknownSourceKindWeight?: number;
 }
 
-const DEFAULT_SOURCE_SYSTEM_WEIGHTS: Readonly<Record<string, number>> = {
+const DEFAULT_SOURCE_SYSTEM_WEIGHTS: Readonly<Partial<Record<SourceSystem, number>>> = {
   'truth-kernel': 1.1,
   'jarvis-brain-db': 0.95,
   'jarvis-memory-db': 0.85,
   'demo-source': 0.3,
 };
 
-const DEFAULT_SOURCE_KIND_WEIGHTS: Readonly<Record<string, number>> = {
+const DEFAULT_SOURCE_KIND_WEIGHTS: Readonly<Partial<Record<SourceKind, number>>> = {
   decision: 0.8,
   preference: 0.75,
   relationship: 0.65,
@@ -82,7 +82,7 @@ function finiteOrZero(value: number | null | undefined): number {
 }
 
 function sourceSystemWeight(
-  sourceSystem: string | null | undefined,
+  sourceSystem: SourceSystem | null | undefined,
   weights: RecallWeightOverrides | undefined,
   profile: RetrievalWeightProfile | undefined,
 ): number {
@@ -99,7 +99,7 @@ function sourceSystemWeight(
 }
 
 function sourceKindWeight(
-  sourceKind: string | null | undefined,
+  sourceKind: SourceKind | null | undefined,
   weights: RecallWeightOverrides | undefined,
   profile: RetrievalWeightProfile | undefined,
 ): number {

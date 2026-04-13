@@ -2,6 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 import { assert, assertDeepEqual, assertEqual } from '../../src/shared/assert';
+import { createJcpLiveReader } from '../../src/adapters/jcp';
 import { createSessionRuntime } from '../../src/session-runtime';
 import { createTruthKernelStorage, ensureTruthKernelSeedData } from '../../src/jarvis_fusion/truth-kernel';
 import { createJcpFixtureDb } from '../helpers/jcp-fixture';
@@ -157,7 +158,11 @@ export function runSessionRuntimeUnitTest(): void {
   });
 
   try {
-    const runtime = createSessionRuntime({ store, autoSeed: false });
+    const runtime = createSessionRuntime({
+      store,
+      autoSeed: false,
+      jcpLiveReader: createJcpLiveReader(jcpDbPath),
+    });
     const pack = runtime.buildContextPack({
       project: 'demo-project',
       objective: 'prepare the codex shim',
@@ -231,13 +236,22 @@ export function runSessionRuntimeUnitTest(): void {
       pack.recent_changes.stale_items.some((item) => item.includes('page:stale:demo-project')),
       'expected stale page to surface',
     );
+    assertEqual(pack.jcp_context?.enabled, true);
     assert(
-      pack.truth_highlights.decisions.some((decision) => decision.includes('[source_system=jarvis-memory-db]')),
-      'expected jcp decision tag in truth highlights',
+      pack.jcp_context?.decisions.some((decision) => decision.includes('[source_system=jarvis-memory-db]')),
+      'expected jcp decision tag in jcp_context',
     );
     assert(
+      pack.jcp_context?.entities.some((entity) => entity.includes('[source_system=jarvis-memory-db]')),
+      'expected jcp entity tag in jcp_context',
+    );
+    assertEqual(
+      pack.truth_highlights.decisions.some((decision) => decision.includes('[source_system=jarvis-memory-db]')),
+      false,
+    );
+    assertEqual(
       pack.truth_highlights.entities.some((entity) => entity.includes('[source_system=jarvis-memory-db]')),
-      'expected jcp entity tag in truth highlights',
+      false,
     );
     assertEqual(pack.evidence_appendix.enabled, false);
   } finally {

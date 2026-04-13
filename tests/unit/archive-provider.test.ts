@@ -1,8 +1,10 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { assertEqual } from '../../src/shared/assert';
-import { buildLocalArchiveBundle } from '../../src/jarvis_fusion/archive-provider';
+import { assert, assertEqual } from '../../src/shared/assert';
+import { createJcpLiveReader } from '../../src/adapters/jcp';
+import { buildLocalArchiveBundle, buildTruthDirectBundle } from '../../src/jarvis_fusion/archive-provider';
 import { createTruthKernelStorage } from '../../src/jarvis_fusion/truth-kernel';
 import { createJcpFixtureDb } from '../helpers/jcp-fixture';
 
@@ -10,162 +12,141 @@ export function runArchiveProviderUnitTest(): void {
   const root = mkdtempSync(`${tmpdir()}/waypath-archive-provider-`);
   const store = createTruthKernelStorage(`${root}/truth.db`);
   const jcpDbPath = `${root}/jarvis.db`;
-  createJcpFixtureDb(jcpDbPath);
+  const mempalaceRoot = `${root}/mempalace`;
   const timestamp = new Date().toISOString();
   const previousJarvisPath = process.env.JARVIS_FUSION_JARVIS_DB_PATH;
+  const previousMemPalacePath = process.env.JARVIS_FUSION_MEMPALACE_PATH;
+
+  createJcpFixtureDb(jcpDbPath);
+  mkdirSync(join(mempalaceRoot, 'projects'), { recursive: true });
+  writeFileSync(
+    join(mempalaceRoot, 'projects', 'alpha.md'),
+    [
+      '# Alpha Archive',
+      '',
+      'MemPalace keeps the external brain rollout and archive ranking notes.',
+      '',
+    ].join('\n'),
+  );
+
   process.env.JARVIS_FUSION_JARVIS_DB_PATH = jcpDbPath;
+  process.env.JARVIS_FUSION_MEMPALACE_PATH = mempalaceRoot;
+  const jcpLiveReader = createJcpLiveReader(jcpDbPath);
 
   try {
-    store.upsertProvenance({
-      provenance_id: 'prov:demo',
-      source_system: 'demo-source',
-      source_kind: 'decision',
-      source_ref: 'fixture:demo',
-      observed_at: timestamp,
-      imported_at: timestamp,
-      promoted_at: null,
-      promoted_by: null,
-      confidence: 0.6,
-      notes: null,
-    } as never);
-    store.upsertProvenance({
-      provenance_id: 'prov:brain',
-      source_system: 'jarvis-brain-db',
-      source_kind: 'decision',
-      source_ref: 'fixture:brain',
-      observed_at: timestamp,
-      imported_at: timestamp,
-      promoted_at: null,
-      promoted_by: null,
-      confidence: 0.6,
-      notes: null,
-    } as never);
-    store.upsertProvenance({
-      provenance_id: 'prov:high-confidence',
-      source_system: 'truth-kernel',
-      source_kind: 'decision',
-      source_ref: 'fixture:high-confidence',
-      observed_at: timestamp,
-      imported_at: timestamp,
-      promoted_at: null,
-      promoted_by: null,
-      confidence: 0.95,
-      notes: null,
-    } as never);
-    store.upsertProvenance({
-      provenance_id: 'prov:low-confidence',
-      source_system: 'truth-kernel',
-      source_kind: 'decision',
-      source_ref: 'fixture:low-confidence',
-      observed_at: timestamp,
-      imported_at: timestamp,
-      promoted_at: null,
-      promoted_by: null,
-      confidence: 0.2,
-      notes: null,
-    } as never);
-
     store.upsertDecision({
-      decision_id: 'decision:demo',
-      title: 'Ranking candidate from demo source',
-      statement: 'ranking candidate from demo source',
+      decision_id: 'decision:truth-external-brain',
+      title: 'Truth kernel external brain policy',
+      statement: 'Truth-only recall should remain separate from archive evidence.',
       status: 'active',
       scope_entity_id: null,
       effective_at: timestamp,
       superseded_by: null,
-      provenance_id: 'prov:demo',
+      provenance_id: null,
       created_at: timestamp,
       updated_at: timestamp,
     });
     store.upsertDecision({
-      decision_id: 'decision:brain',
-      title: 'Ranking candidate from brain source',
-      statement: 'ranking candidate from brain source',
+      decision_id: 'decision:truth-only-leak-sentinel',
+      title: 'Truth-only zzqv sentinel neutron phrase',
+      statement: 'zzqv sentinel neutron exists only in the truth kernel and must never leak into archive bundles.',
       status: 'active',
       scope_entity_id: null,
       effective_at: timestamp,
       superseded_by: null,
-      provenance_id: 'prov:brain',
-      created_at: timestamp,
-      updated_at: timestamp,
-    });
-    store.upsertDecision({
-      decision_id: 'decision:high-confidence',
-      title: 'Confidence candidate from strong provenance',
-      statement: 'confidence candidate from strong provenance',
-      status: 'active',
-      scope_entity_id: null,
-      effective_at: timestamp,
-      superseded_by: null,
-      provenance_id: 'prov:high-confidence',
-      created_at: timestamp,
-      updated_at: timestamp,
-    });
-    store.upsertDecision({
-      decision_id: 'decision:low-confidence',
-      title: 'Confidence candidate from weak provenance',
-      statement: 'confidence candidate from weak provenance',
-      status: 'active',
-      scope_entity_id: null,
-      effective_at: timestamp,
-      superseded_by: null,
-      provenance_id: 'prov:low-confidence',
-      created_at: timestamp,
-      updated_at: timestamp,
-    });
-    store.upsertDecision({
-      decision_id: 'decision:excerpt-match',
-      title: 'Excerpt only match',
-      statement: 'lexical edge appears in the excerpt body',
-      status: 'active',
-      scope_entity_id: null,
-      effective_at: timestamp,
-      superseded_by: null,
-      provenance_id: 'prov:high-confidence',
-      created_at: timestamp,
-      updated_at: timestamp,
-    });
-    store.upsertDecision({
-      decision_id: 'decision:title-match',
-      title: 'Lexical edge title match',
-      statement: 'body text',
-      status: 'active',
-      scope_entity_id: null,
-      effective_at: timestamp,
-      superseded_by: null,
-      provenance_id: 'prov:high-confidence',
+      provenance_id: null,
       created_at: timestamp,
       updated_at: timestamp,
     });
 
-    const defaultBundle = buildLocalArchiveBundle('ranking candidate', store);
-    const defaultSystems = defaultBundle.items.map((item) => item.metadata.source_system);
-    assertEqual(
-      defaultSystems.includes('jarvis-brain-db') || defaultSystems.includes('demo-source'),
-      true,
+    const truthBundle = buildTruthDirectBundle('external brain', store);
+    assert(
+      truthBundle.items.some((item) => item.metadata.source_system === 'truth-kernel'),
+      'expected truth-direct bundle to contain truth-kernel items',
+    );
+    assert(
+      truthBundle.items.some((item) => item.title.includes('Truth kernel external brain policy')),
+      'expected truth-direct bundle to contain matching truth decision',
     );
 
-    const weightedBundle = buildLocalArchiveBundle('ranking candidate', store, {
+    const archiveBundle = buildLocalArchiveBundle('external brain', store, { jcpLiveReader });
+    assert(archiveBundle.items.length > 0, 'expected archive recall results from live providers');
+    assert(
+      archiveBundle.items.every((item) => {
+        const sourceSystem = String(item.metadata.source_system ?? '');
+        return sourceSystem === 'jarvis-memory-db' || sourceSystem === 'mempalace';
+      }),
+      'expected archive bundle to contain only JCP/MemPalace items',
+    );
+    assertEqual(
+      archiveBundle.items.some((item) => item.metadata.source_system === 'truth-kernel'),
+      false,
+    );
+    assert(
+      archiveBundle.items.some((item) => item.metadata.source_system === 'jarvis-memory-db'),
+      'expected JCP item in archive bundle',
+    );
+    assert(
+      archiveBundle.items.some((item) => item.metadata.source_system === 'mempalace'),
+      'expected MemPalace item in archive bundle',
+    );
+
+    store.upsertEvidenceBundle({
+      bundle_id: 'bundle:archive:weighted',
+      query: 'weight preference probe',
+      generated_at: timestamp,
+      items: [
+        {
+          evidence_id: 'evidence:weighted:mempalace',
+          source_ref: 'mempalace://weighted',
+          title: 'Weighted MemPalace candidate',
+          excerpt: 'weight preference probe',
+          observed_at: timestamp,
+          confidence: 0.5,
+          metadata: {
+            source_system: 'mempalace',
+            source_kind: 'project',
+          },
+        },
+        {
+          evidence_id: 'evidence:weighted:jcp',
+          source_ref: 'jarvis-memory-db://weighted',
+          title: 'Weighted JCP candidate',
+          excerpt: 'weight preference probe',
+          observed_at: timestamp,
+          confidence: 0.5,
+          metadata: {
+            source_system: 'jarvis-memory-db',
+            source_kind: 'memory',
+          },
+        },
+      ],
+    });
+
+    const weightedBundle = buildLocalArchiveBundle('weight preference probe', store, {
+      jcpLiveReader,
       weights: {
         sourceSystems: {
-          'demo-source': 4,
-          'jarvis-brain-db': 0,
+          mempalace: 5,
+          'jarvis-memory-db': 0,
         },
       },
     });
-    assertEqual(weightedBundle.items[0]?.metadata.source_system, 'demo-source');
+    assertEqual(weightedBundle.items[0]?.metadata.source_system, 'mempalace');
 
-    const confidenceBundle = buildLocalArchiveBundle('confidence candidate', store);
-    assertEqual(confidenceBundle.items[0]?.source_ref, 'fixture:high-confidence');
-
-    const lexicalBundle = buildLocalArchiveBundle('lexical edge', store);
-    const lexicalTitles = lexicalBundle.items.map((item) => item.title);
-    assertEqual(lexicalTitles.some((t) => t.includes('Lexical edge')), true);
-
-    const jcpBundle = buildLocalArchiveBundle('alpha external brain', store);
+    const truthOnlyArchiveBundle = buildLocalArchiveBundle('zzqv sentinel neutron', store, {
+      jcpLiveReader,
+    });
     assertEqual(
-      jcpBundle.items.some((item) => item.metadata.source_system === 'jarvis-memory-db'),
-      true,
+      truthOnlyArchiveBundle.items.some((item) => item.title.includes('Truth-only zzqv sentinel neutron phrase')),
+      false,
+    );
+    assert(
+      truthOnlyArchiveBundle.items.every((item) => {
+        const sourceSystem = String(item.metadata.source_system ?? '');
+        return sourceSystem === 'jarvis-memory-db' || sourceSystem === 'mempalace';
+      }),
+      'expected truth-only matches to stay out of archive evidence bundle',
     );
   } finally {
     store.close();
@@ -173,6 +154,11 @@ export function runArchiveProviderUnitTest(): void {
       delete process.env.JARVIS_FUSION_JARVIS_DB_PATH;
     } else {
       process.env.JARVIS_FUSION_JARVIS_DB_PATH = previousJarvisPath;
+    }
+    if (previousMemPalacePath === undefined) {
+      delete process.env.JARVIS_FUSION_MEMPALACE_PATH;
+    } else {
+      process.env.JARVIS_FUSION_MEMPALACE_PATH = previousMemPalacePath;
     }
   }
 }

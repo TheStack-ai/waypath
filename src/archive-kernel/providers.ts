@@ -1,3 +1,9 @@
+import {
+  parseSourceKind,
+  parseSourceSystem,
+  type SourceKind,
+  type SourceSystem,
+} from '../contracts/index.js';
 import type {
   ArchiveHealth,
   ArchivePointerMeta,
@@ -9,6 +15,8 @@ import type {
   JsonObject,
 } from '../jarvis_fusion/contracts.js';
 import { createEmptyEvidenceBundle } from './recall-boundary.js';
+import { tokenize } from '../shared/text.js';
+import { nowIso } from '../shared/time.js';
 
 export interface LocalArchiveRecordInput {
   readonly evidence_id: string;
@@ -22,26 +30,14 @@ export interface LocalArchiveRecordInput {
 
 export interface LocalArchiveProviderOptions {
   readonly items?: readonly LocalArchiveRecordInput[];
-  readonly sourceSystem?: string;
-  readonly sourceKind?: string;
+  readonly sourceSystem?: SourceSystem;
+  readonly sourceKind?: SourceKind;
   readonly defaultLimit?: number;
 }
 
 interface RankedEvidenceItem {
   readonly item: EvidenceItem;
   readonly score: number;
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
-function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .split(/\s+/)
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0);
 }
 
 function metadataStringValue(metadata: JsonObject, key: string): string | null {
@@ -73,8 +69,8 @@ function passesFilters(item: EvidenceItem, filters: ArchiveSearchFilters | undef
     return true;
   }
 
-  const sourceSystem = metadataStringValue(item.metadata, 'source_system');
-  const sourceKind = metadataStringValue(item.metadata, 'source_kind');
+  const sourceSystem = parseSourceSystem(metadataStringValue(item.metadata, 'source_system'));
+  const sourceKind = parseSourceKind(metadataStringValue(item.metadata, 'source_kind'));
 
   if (filters.sourceSystems && (!sourceSystem || !filters.sourceSystems.includes(sourceSystem))) {
     return false;

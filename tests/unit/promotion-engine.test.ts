@@ -253,6 +253,10 @@ export function testReviewWithPayloadRecordsProvenance(): void {
     const entity = store.getEntity('entity:promoted');
     if (!entity) throw new Error('Expected promoted entity in truth store');
     if (entity.name !== 'Promoted Concept') throw new Error('Entity name mismatch');
+    const state = JSON.parse(entity.state_json) as { provenance_id?: string };
+    if (!state.provenance_id?.startsWith('provenance:review:')) {
+      throw new Error(`Expected promoted entity provenance in state_json, got '${state.provenance_id}'`);
+    }
   } finally {
     store.close();
   }

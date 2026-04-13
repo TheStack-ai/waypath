@@ -1,10 +1,7 @@
 import type { PromotionCandidateView } from '../contracts/index.js';
 import { type SqliteTruthKernelStorage } from './truth-kernel/index.js';
 import { submitCandidate, reviewCandidate } from '../promotion/index.js';
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
+import { nowIso } from '../shared/time.js';
 
 /**
  * Backward-compatible wrapper: submit a promotion candidate by subject string.

@@ -5,6 +5,7 @@ import type {
   EvidenceBundle,
   EvidenceItem,
 } from '../jarvis_fusion/contracts.js';
+import { nowIso } from '../shared/time.js';
 
 export interface ArchiveRecallRequest {
   readonly query: string;
@@ -35,10 +36,6 @@ export interface ArchiveRecallBoundaryOptions {
 
 function normalizeQuery(query: string): string {
   return query.trim();
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function makeBundleId(scope: string): string {

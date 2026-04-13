@@ -3,6 +3,8 @@ import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import type {
+  SourceKind,
+  SourceSystem,
   GraphContext,
   GraphRelationshipSummary,
   SqliteQueryResult,
@@ -16,6 +18,7 @@ import type {
 } from '../contracts.js';
 import type { EvidenceBundle, PromotionCandidateView, StoredKnowledgePage } from '../../contracts/index.js';
 import { TRUTH_KERNEL_SCHEMA_VERSION, buildTruthKernelMigrationSql } from './schema.js';
+import { nowIso } from '../../shared/time.js';
 
 export interface SqliteTruthKernelStoreOptions {
   readonly autoMigrate?: boolean;
@@ -65,12 +68,11 @@ interface PreferenceConflictRow {
   readonly last_updated: string;
 }
 
+const WAYPATH_FTS_SCHEMA_NAME = 'fts_version';
+const WAYPATH_FTS_SCHEMA_VERSION = 1;
+
 function normalizeLocation(location: string): string {
   return location.trim();
-}
-
-function nowIso(): string {
-  return new Date().toISOString();
 }
 
 function ensureParentDirectory(location: string): void {
@@ -242,7 +244,10 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
 
   migrate(): void {
     this.db.exec(buildTruthKernelMigrationSql());
-    this.rebuildWaypathFts();
+    if (this.getSchemaMetaVersion(WAYPATH_FTS_SCHEMA_NAME) !== WAYPATH_FTS_SCHEMA_VERSION) {
+      this.rebuildWaypathFts();
+      this.setSchemaMetaVersion(WAYPATH_FTS_SCHEMA_NAME, WAYPATH_FTS_SCHEMA_VERSION);
+    }
   }
 
   close(): void {
@@ -286,7 +291,7 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     this.run(`INSERT INTO entities (entity_id, entity_type, name, summary, state_json, status, canonical_page_id, created_at, updated_at)
       VALUES (:entity_id,:entity_type,:name,:summary,:state_json,:status,:canonical_page_id,:created_at,:updated_at)
       ON CONFLICT(entity_id) DO UPDATE SET entity_type=excluded.entity_type,name=excluded.name,summary=excluded.summary,state_json=excluded.state_json,status=excluded.status,canonical_page_id=excluded.canonical_page_id,updated_at=excluded.updated_at`, asParams(record));
-    this.refreshWaypathFtsRecord(
+    this.upsertWaypathFtsEntry(
       'entities',
       record.entity_id,
       'entity',
@@ -300,7 +305,7 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     this.run(`INSERT INTO decisions (decision_id,title,statement,status,scope_entity_id,effective_at,superseded_by,provenance_id,created_at,updated_at)
       VALUES (:decision_id,:title,:statement,:status,:scope_entity_id,:effective_at,:superseded_by,:provenance_id,:created_at,:updated_at)
       ON CONFLICT(decision_id) DO UPDATE SET title=excluded.title,statement=excluded.statement,status=excluded.status,scope_entity_id=excluded.scope_entity_id,effective_at=excluded.effective_at,superseded_by=excluded.superseded_by,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
-    this.refreshWaypathFtsRecord(
+    this.upsertWaypathFtsEntry(
       'decisions',
       record.decision_id,
       'decision',
@@ -316,7 +321,7 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
       ON CONFLICT(relationship_id) DO UPDATE SET from_entity_id=excluded.from_entity_id,relation_type=excluded.relation_type,to_entity_id=excluded.to_entity_id,weight=excluded.weight,status=excluded.status,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
   }
 
-  upsertProvenance(record: { provenance_id: string; source_system: string; source_kind: string; source_ref: string; observed_at: string | null; imported_at: string | null; promoted_at: string | null; promoted_by: string | null; confidence: number | null; notes: string | null; }): string {
+  upsertProvenance(record: { provenance_id: string; source_system: SourceSystem; source_kind: SourceKind; source_ref: string; observed_at: string | null; imported_at: string | null; promoted_at: string | null; promoted_by: string | null; confidence: number | null; notes: string | null; }): string {
     this.run(`INSERT INTO provenance_records (provenance_id,source_system,source_kind,source_ref,observed_at,imported_at,promoted_at,promoted_by,confidence,notes)
       VALUES (:provenance_id,:source_system,:source_kind,:source_ref,:observed_at,:imported_at,:promoted_at,:promoted_by,:confidence,:notes)
       ON CONFLICT(provenance_id) DO UPDATE SET source_system=excluded.source_system,source_kind=excluded.source_kind,source_ref=excluded.source_ref,observed_at=excluded.observed_at,imported_at=excluded.imported_at,promoted_at=excluded.promoted_at,promoted_by=excluded.promoted_by,confidence=excluded.confidence,notes=excluded.notes`, asParams(record));
@@ -327,7 +332,7 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     this.run(`INSERT INTO preferences (preference_id,subject_kind,subject_ref,key,value,strength,status,provenance_id,created_at,updated_at)
       VALUES (:preference_id,:subject_kind,:subject_ref,:key,:value,:strength,:status,:provenance_id,:created_at,:updated_at)
       ON CONFLICT(preference_id) DO UPDATE SET subject_kind=excluded.subject_kind,subject_ref=excluded.subject_ref,key=excluded.key,value=excluded.value,strength=excluded.strength,status=excluded.status,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
-    this.refreshWaypathFtsRecord(
+    this.upsertWaypathFtsEntry(
       'preferences',
       record.preference_id,
       'preference',
@@ -341,7 +346,7 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     this.run(`INSERT INTO promoted_memories (memory_id,memory_type,access_tier,summary,content,subject_entity_id,status,provenance_id,created_at,updated_at)
       VALUES (:memory_id,:memory_type,:access_tier,:summary,:content,:subject_entity_id,:status,:provenance_id,:created_at,:updated_at)
       ON CONFLICT(memory_id) DO UPDATE SET memory_type=excluded.memory_type,access_tier=excluded.access_tier,summary=excluded.summary,content=excluded.content,subject_entity_id=excluded.subject_entity_id,status=excluded.status,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
-    this.refreshWaypathFtsRecord(
+    this.upsertWaypathFtsEntry(
       'promoted_memories',
       record.memory_id,
       'memory',
@@ -679,7 +684,7 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     return row?.count ?? 0;
   }
 
-  private refreshWaypathFtsRecord(
+  private upsertWaypathFtsEntry(
     sourceTable: WaypathFtsMatch['source_table'],
     sourceId: string,
     sourceType: WaypathFtsMatch['source_type'],
@@ -728,6 +733,27 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
       `INSERT INTO waypath_fts (source_table, source_id, source_type, status, title, content)
        SELECT 'promoted_memories', memory_id, 'memory', status, summary, summary || char(10) || content
          FROM promoted_memories`,
+    );
+  }
+
+  private getSchemaMetaVersion(schemaName: string): number | null {
+    const row = this.get<{ schema_version: number }>(
+      `SELECT schema_version FROM schema_meta WHERE schema_name = :schema_name LIMIT 1`,
+      { schema_name: schemaName },
+    );
+    return row?.schema_version ?? null;
+  }
+
+  private setSchemaMetaVersion(schemaName: string, schemaVersion: number): void {
+    this.run(
+      `INSERT INTO schema_meta (schema_name, schema_version, applied_at)
+       VALUES (:schema_name, :schema_version, :applied_at)
+       ON CONFLICT(schema_name) DO UPDATE SET schema_version = excluded.schema_version, applied_at = excluded.applied_at`,
+      {
+        schema_name: schemaName,
+        schema_version: schemaVersion,
+        applied_at: nowIso(),
+      },
     );
   }
 }

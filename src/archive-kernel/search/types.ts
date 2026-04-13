@@ -11,6 +11,8 @@
  * a single ranking that respects all dimensions fairly.
  */
 
+import type { SourceKind, SourceSystem } from '../../contracts/index.js';
+
 export interface SearchCandidate {
   /** Unique identifier (entity_id, decision_id, memory_id, etc.) */
   readonly id: string;
@@ -21,9 +23,9 @@ export interface SearchCandidate {
   /** Source type for type-diversity enforcement */
   readonly source_type: 'entity' | 'decision' | 'preference' | 'memory' | 'evidence' | 'page';
   /** Source system (truth-kernel, jarvis-memory-db, etc.) */
-  readonly source_system: string;
+  readonly source_system: SourceSystem;
   /** Source kind (decision, memory, relationship, etc.) */
-  readonly source_kind: string;
+  readonly source_kind: SourceKind;
   /** Provenance confidence (0-1) */
   readonly confidence: number | null;
   /** Graph depth from seed entity (0 = seed itself, null = not graph-derived) */
