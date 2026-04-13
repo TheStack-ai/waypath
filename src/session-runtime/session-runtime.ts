@@ -17,7 +17,7 @@ import {
 } from '../jarvis_fusion/truth-kernel/index.js';
 import { createRetrievalStrategy } from '../archive-kernel/retrieval/index.js';
 import { expandGraphContext } from '../ontology-support/index.js';
-import { createJcpLiveReader, type JcpLiveReader } from '../adapters/jcp/index.js';
+import type { JcpLiveReader } from '../adapters/jcp/index.js';
 import type {
   TruthDecisionRecord,
   TruthEntityRecord,
@@ -650,7 +650,7 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
       const seedEntities = normalizeList(input.seedEntities);
       const focusTokens = buildFocusTokens(project, objective, activeTask);
       const jcpRuntimeContext = buildJcpRuntimeContext(
-        options.jcpLiveReader ?? createJcpLiveReader(),
+        options.jcpLiveReader,
         project,
         focusTokens,
       );

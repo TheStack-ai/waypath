@@ -481,6 +481,8 @@ function toEntityCandidate(
     graph_weight: null,
     metadata: {
       entity_type: entity.entity_type,
+      source_system: provenance.source_system,
+      source_kind: provenance.source_kind,
       source_ref: provenance.source_ref,
     },
   };
@@ -507,6 +509,8 @@ function toDecisionCandidate(
     graph_weight: null,
     metadata: {
       scope_entity_id: decision.scope_entity_id,
+      source_system: provenance.source_system,
+      source_kind: provenance.source_kind,
       source_ref: provenance.source_ref,
     },
   };
@@ -534,6 +538,8 @@ function toPreferenceCandidate(
     metadata: {
       strength: preference.strength,
       subject_ref: preference.subject_ref,
+      source_system: provenance.source_system,
+      source_kind: provenance.source_kind,
       source_ref: provenance.source_ref,
     },
   };
@@ -561,6 +567,8 @@ function toMemoryCandidate(
     metadata: {
       memory_type: memory.memory_type,
       access_tier: memory.access_tier,
+      source_system: provenance.source_system,
+      source_kind: provenance.source_kind,
       source_ref: provenance.source_ref,
     },
   };

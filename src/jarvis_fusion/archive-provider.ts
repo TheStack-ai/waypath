@@ -12,7 +12,7 @@ import {
 import { queryTruthDirect, searchTruthKernel, type RankedList } from '../archive-kernel/search/index.js';
 import type { SearchCandidate } from '../archive-kernel/search/index.js';
 import { rrfFusion } from '../archive-kernel/search/rrf.js';
-import { createJcpLiveReader, type JcpLiveReader } from '../adapters/jcp/index.js';
+import type { JcpLiveReader } from '../adapters/jcp/index.js';
 import { MemPalaceArchiveProvider } from '../adapters/mempalace/index.js';
 import type {
   TruthDecisionRecord,
@@ -456,7 +456,7 @@ export function buildLocalArchiveBundle(
   options: LocalArchiveRuntimeOptions = {},
 ): EvidenceBundle {
   const normalizedQuery = query.trim();
-  const jcpRanked = buildJcpRankedLists(normalizedQuery, options.jcpLiveReader ?? createJcpLiveReader());
+  const jcpRanked = buildJcpRankedLists(normalizedQuery, options.jcpLiveReader);
   const mempalaceItems = buildMemPalaceEvidenceItems(normalizedQuery);
   const mempalaceCandidates = mempalaceItems.map(toArchiveCandidate);
   const archiveEvidenceLookup = mergeEvidenceLookups(
