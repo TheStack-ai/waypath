@@ -1,0 +1,28 @@
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim() || 'empty';
+}
+
+export function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 1);
+}
+
+export function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values.map((v) => v.trim()).filter((v) => v.length > 0))];
+}
+
+export function bulletSection(title: string, items: readonly string[]): string[] {
+  return [
+    `## ${title}`,
+    ...(items.length > 0 ? items : ['- none']),
+    '',
+  ];
+}

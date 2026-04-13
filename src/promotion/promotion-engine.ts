@@ -57,12 +57,16 @@ function applyPayload(
   payload: TruthPayload,
   targetId: string | null,
   timestamp: string,
+  provenanceId: string | null,
   sideEffects: PromotionSideEffect[],
 ): void {
   if (proposedAction === 'create' || proposedAction === 'update') {
     switch (payload.kind) {
       case 'entity': {
-        store.upsertEntity({ ...payload.data, created_at: timestamp, updated_at: timestamp });
+        // entities table has no provenance_id column — store in state_json instead
+        const entityState = JSON.parse(payload.data.state_json || '{}');
+        entityState.provenance_id = provenanceId;
+        store.upsertEntity({ ...payload.data, state_json: JSON.stringify(entityState), created_at: timestamp, updated_at: timestamp });
         sideEffects.push({
           kind: proposedAction === 'create' ? 'truth_created' : 'truth_updated',
           object_type: 'entity',
@@ -71,7 +75,7 @@ function applyPayload(
         break;
       }
       case 'decision': {
-        store.upsertDecision({ ...payload.data, created_at: timestamp, updated_at: timestamp });
+        store.upsertDecision({ ...payload.data, provenance_id: provenanceId, created_at: timestamp, updated_at: timestamp });
         sideEffects.push({
           kind: proposedAction === 'create' ? 'truth_created' : 'truth_updated',
           object_type: 'decision',
@@ -80,7 +84,7 @@ function applyPayload(
         break;
       }
       case 'preference': {
-        store.upsertPreference({ ...payload.data, created_at: timestamp, updated_at: timestamp });
+        store.upsertPreference({ ...payload.data, provenance_id: provenanceId, created_at: timestamp, updated_at: timestamp });
         sideEffects.push({
           kind: proposedAction === 'create' ? 'truth_created' : 'truth_updated',
           object_type: 'preference',
@@ -89,7 +93,7 @@ function applyPayload(
         break;
       }
       case 'memory': {
-        store.upsertPromotedMemory({ ...payload.data, created_at: timestamp, updated_at: timestamp });
+        store.upsertPromotedMemory({ ...payload.data, provenance_id: provenanceId, created_at: timestamp, updated_at: timestamp });
         sideEffects.push({
           kind: proposedAction === 'create' ? 'truth_created' : 'truth_updated',
           object_type: 'promoted_memory',
@@ -122,22 +126,25 @@ function applyPayload(
       );
     }
 
-    // Create the new record (force status: 'active')
+    // Create the new record (force status: 'active', link provenance)
     switch (payload.kind) {
-      case 'entity':
-        store.upsertEntity({ ...payload.data, status: 'active', created_at: timestamp, updated_at: timestamp });
+      case 'entity': {
+        const supersedeState = JSON.parse(payload.data.state_json || '{}');
+        supersedeState.provenance_id = provenanceId;
+        store.upsertEntity({ ...payload.data, status: 'active', state_json: JSON.stringify(supersedeState), created_at: timestamp, updated_at: timestamp });
         sideEffects.push({ kind: 'truth_superseded', old_id: targetId, new_id: payload.data.entity_id });
+      }
         break;
       case 'decision':
-        store.upsertDecision({ ...payload.data, status: 'active', created_at: timestamp, updated_at: timestamp });
+        store.upsertDecision({ ...payload.data, status: 'active', provenance_id: provenanceId, created_at: timestamp, updated_at: timestamp });
         sideEffects.push({ kind: 'truth_superseded', old_id: targetId, new_id: payload.data.decision_id });
         break;
       case 'preference':
-        store.upsertPreference({ ...payload.data, status: 'active', created_at: timestamp, updated_at: timestamp });
+        store.upsertPreference({ ...payload.data, status: 'active', provenance_id: provenanceId, created_at: timestamp, updated_at: timestamp });
         sideEffects.push({ kind: 'truth_superseded', old_id: targetId, new_id: payload.data.preference_id });
         break;
       case 'memory':
-        store.upsertPromotedMemory({ ...payload.data, status: 'active', created_at: timestamp, updated_at: timestamp });
+        store.upsertPromotedMemory({ ...payload.data, status: 'active', provenance_id: provenanceId, created_at: timestamp, updated_at: timestamp });
         sideEffects.push({ kind: 'truth_superseded', old_id: targetId, new_id: payload.data.memory_id });
         break;
     }
@@ -356,7 +363,7 @@ export function reviewCandidate(
 
         if (decision.payload) {
           // Payload-driven: create/update/supersede the exact truth record specified
-          applyPayload(store, proposedAction, decision.payload, targetId, timestamp, sideEffects);
+          applyPayload(store, proposedAction, decision.payload, targetId, timestamp, provenanceId, sideEffects);
         } else if (proposedAction === 'create' && targetType === 'promoted_memory') {
           // Legacy path: create a promoted_memory from the candidate subject
           const memoryId = `memory:promoted:${slugify(existing.subject)}:${Date.now()}`;

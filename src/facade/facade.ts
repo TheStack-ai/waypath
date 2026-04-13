@@ -87,10 +87,17 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
       };
     },
     page(subject: string): PageResult {
+      const pageType = subject.startsWith('project:') ? 'project_page' as const
+        : subject.startsWith('decision:') ? 'decision_page' as const
+        : subject.startsWith('entity:') || subject.startsWith('person:') || subject.startsWith('tool:') || subject.startsWith('concept:') ? 'entity_page' as const
+        : store.getEntity(`project:${subject}`) ? 'project_page' as const
+        : 'session_brief' as const;
       const page = synthesizePage(store, {
-        page_type: 'session_brief',
-        project: subject,
+        page_type: pageType,
+        project: pageType === 'project_page' || pageType === 'session_brief' ? subject.replace(/^project:/, '') : undefined,
         subject,
+        anchor_entity_id: pageType === 'entity_page' ? subject : undefined,
+        anchor_decision_id: pageType === 'decision_page' ? subject : undefined,
       });
       return {
         operation: 'page',

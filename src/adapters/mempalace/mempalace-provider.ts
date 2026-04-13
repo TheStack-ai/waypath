@@ -385,7 +385,7 @@ export class MemPalaceArchiveProvider implements ArchiveProvider {
     this.indexed = true;
   }
 
-  async search(query: ArchiveSearchQuery, filters?: ArchiveSearchFilters): Promise<EvidenceBundle> {
+  searchSync(query: ArchiveSearchQuery, filters?: ArchiveSearchFilters): EvidenceBundle {
     const normalizedQuery = normalizeQuery(query.query);
     if (normalizedQuery.length === 0) {
       return {
@@ -423,14 +423,14 @@ export class MemPalaceArchiveProvider implements ArchiveProvider {
     };
   }
 
-  async getItem(evidenceId: string): Promise<EvidenceItem | null> {
+  getItemSync(evidenceId: string): EvidenceItem | null {
     this.ensureIndex();
     const relativePath = evidenceIdToRelativePath(evidenceId);
     const file = [...this.indexByPath.values()].find((record) => record.relativePath === relativePath);
     return file ? buildFileItem(file, evidenceId) : null;
   }
 
-  async health(): Promise<ArchiveHealth> {
+  healthSync(): ArchiveHealth {
     if (!existsSync(this.basePath)) {
       return {
         ok: false,
@@ -443,5 +443,17 @@ export class MemPalaceArchiveProvider implements ArchiveProvider {
       ok: true,
       message: `mempalace provider ready at ${this.basePath} with ${this.indexByPath.size} markdown file(s)`,
     };
+  }
+
+  async search(query: ArchiveSearchQuery, filters?: ArchiveSearchFilters): Promise<EvidenceBundle> {
+    return this.searchSync(query, filters);
+  }
+
+  async getItem(evidenceId: string): Promise<EvidenceItem | null> {
+    return this.getItemSync(evidenceId);
+  }
+
+  async health(): Promise<ArchiveHealth> {
+    return this.healthSync();
   }
 }

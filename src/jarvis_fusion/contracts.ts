@@ -217,6 +217,12 @@ export interface TruthHighlights {
   readonly promoted_memories: readonly TruthPromotedMemoryRecord[];
 }
 
+export interface JcpContext {
+  readonly enabled: boolean;
+  readonly decisions: readonly string[];
+  readonly entities: readonly string[];
+}
+
 export interface GraphRelationshipSummary {
   readonly relationship_id: string;
   readonly from_entity_id: string;
@@ -258,6 +264,7 @@ export interface SessionContextPack {
   readonly session: SessionIdentity;
   readonly current_focus: SessionCurrentFocus;
   readonly truth_highlights: TruthHighlights;
+  readonly jcp_context?: JcpContext;
   readonly graph_context: GraphContext;
   readonly recent_changes: RecentChanges;
   readonly evidence_appendix: EvidenceAppendix;

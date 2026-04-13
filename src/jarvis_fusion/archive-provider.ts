@@ -409,7 +409,10 @@ export function buildLocalArchiveBundle(
     ];
   }
 
-  // Convert ScoredResults back to EvidenceItems for backward compatibility
+  // Convert ScoredResults to EvidenceItems.
+  // Evidence items from external sources (JCP, MemPalace) are included.
+  // Pure truth-kernel items without external provenance are tagged so
+  // the facade can separate them into truth_highlights vs evidence_appendix.
   const pipelineItems: EvidenceItem[] = searchResults.map((sr) => {
     const existing = truthEvidenceLookup.get(sr.candidate.id) ?? jcpRanked.evidenceByCandidateId.get(sr.candidate.id);
     if (existing) return existing;

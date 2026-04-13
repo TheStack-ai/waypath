@@ -28,6 +28,12 @@ export interface TruthHighlights {
   promoted_memories: string[];
 }
 
+export interface JcpContext {
+  enabled: boolean;
+  decisions: string[];
+  entities: string[];
+}
+
 export interface GraphContext {
   seed_entities: string[];
   related_entities: string[];
@@ -177,6 +183,7 @@ export interface SessionContextPack {
   session: SessionIdentity;
   current_focus: SessionFocus;
   truth_highlights: TruthHighlights;
+  jcp_context?: JcpContext;
   graph_context: GraphContext;
   recent_changes: RecentChanges;
   evidence_appendix: EvidenceAppendix;
@@ -239,6 +246,7 @@ export interface RecallResult {
   status: 'ready' | 'stub';
   message: string;
   bundle?: EvidenceBundle;
+  truth_bundle?: EvidenceBundle;
 }
 
 export interface PageView {

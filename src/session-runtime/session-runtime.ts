@@ -58,8 +58,9 @@ interface ScoredValue<T> {
 }
 
 interface JcpRuntimeContext {
-  readonly taggedDecisions: readonly string[];
-  readonly taggedEntities: readonly string[];
+  readonly enabled: boolean;
+  readonly decisions: readonly string[];
+  readonly entities: readonly string[];
 }
 
 function dedupeBy<T>(values: readonly T[], getKey: (value: T) => string): T[] {
@@ -612,7 +613,7 @@ function buildJcpRuntimeContext(
   focusTokens: readonly string[],
 ): JcpRuntimeContext {
   if (!reader || !reader.health().ok) {
-    return { taggedDecisions: [], taggedEntities: [] };
+    return { enabled: false, decisions: [], entities: [] };
   }
 
   const projectQuery = [project, ...focusTokens.slice(0, 4)].join(' ').trim();
@@ -627,8 +628,9 @@ function buildJcpRuntimeContext(
     .filter((entity): entity is NonNullable<typeof entity> => entity !== null);
 
   return {
-    taggedDecisions: decisions.map((decision) => `${decision.decision} [source_system=jarvis-memory-db]`),
-    taggedEntities: uniqueStrings(
+    enabled: true,
+    decisions: decisions.map((decision) => `${decision.decision} [source_system=jarvis-memory-db]`),
+    entities: uniqueStrings(
       [...entities, ...relatedEntities]
         .map((entity) => `${entity.name} [source_system=jarvis-memory-db]`),
     ),
@@ -778,16 +780,15 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
           activeTask,
         },
         truth_highlights: {
-          decisions: uniqueStrings([
-            ...allDecisions.slice(0, 6).map((decision) => decision.title),
-            ...jcpRuntimeContext.taggedDecisions,
-          ]),
+          decisions: uniqueStrings(allDecisions.slice(0, 6).map((decision) => decision.title)),
           preferences: rankedPreferences.slice(0, 6).map((preference) => `${preference.key}=${preference.value}`),
-          entities: uniqueStrings([
-            ...relatedEntityNames.slice(0, 8),
-            ...jcpRuntimeContext.taggedEntities,
-          ]),
+          entities: uniqueStrings(relatedEntityNames.slice(0, 8)),
           promoted_memories: rankedPromotedMemories.slice(0, 6).map((memory) => memory.summary),
+        },
+        jcp_context: {
+          enabled: jcpRuntimeContext.enabled,
+          decisions: [...jcpRuntimeContext.decisions],
+          entities: [...jcpRuntimeContext.entities],
         },
         graph_context: {
           seed_entities:

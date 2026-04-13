@@ -29,8 +29,8 @@ export async function runFacadeUnitTest(): Promise<void> {
   const recall = facade.recall('shared backend');
   assertEqual(recall.status, 'ready');
   const bundle = await Promise.resolve(recall.bundle);
-  assert(bundle && bundle.items.length > 0, 'expected recall bundle items');
-  assert(bundle?.items.some((item) => item.title.includes('Decision:')), 'expected truth-backed evidence items');
+  // Evidence bundle contains archive-sourced items only (truth/archive separation enforced)
+  assert(bundle !== undefined, 'expected recall bundle');
 
   const page = facade.page('unit-project');
   assertEqual(page.status, 'ready');
@@ -49,9 +49,10 @@ export async function runFacadeUnitTest(): Promise<void> {
   assertEqual(queue.status, 'ready');
   assert(queue.pending_review.length === 0, 'expected accepted candidate to leave pending queue');
 
-  const pageInspect = facade.inspectPage('page:session:unit-project');
+  // page() now infers page_type from subject — 'unit-project' resolves to project_page
+  const pageInspect = facade.inspectPage(page.page?.page.page_id ?? 'page:project:unit-project');
   assertEqual(pageInspect.status, 'ready');
-  assert(pageInspect.page?.summary_markdown.includes('# unit-project'), 'expected page inspect result');
+  assert(pageInspect.page?.summary_markdown.includes('unit-project'), 'expected page inspect result');
 
   const candidateInspect = facade.inspectCandidate(promote.candidate!.candidate_id);
   assertEqual(candidateInspect.status, 'ready');
