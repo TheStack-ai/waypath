@@ -96,7 +96,6 @@ export function testExplainArchiveResultsTotalIsRrfFused(): void {
     const result = facade.explain('local first');
     // Archive results use rrf_fused as total
     for (const item of result.archive_results) {
-      assertEqual(item.score_breakdown.total, item.score_breakdown.total); // always true, but ensures field exists
       assert(typeof item.score_breakdown.total === 'number', 'archive total should be number');
     }
   } finally {
