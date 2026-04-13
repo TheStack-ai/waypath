@@ -1,11 +1,14 @@
 import {
   type ContradictionItem,
+  type ExplainResult,
+  type ExplainResultItem,
   type FacadeApi,
   type FacadeDescription,
   type GraphQueryResult,
   type GraphTraversalPattern,
   type InspectCandidateResult,
   type InspectPageResult,
+  type LocalSourceStatusResult,
   type PageResult,
   type PromoteResult,
   type ReviewQueueResult,
@@ -16,8 +19,12 @@ import {
   type SessionRuntime,
   type SessionStartInput,
   type SessionStartResult,
+  type SourceAdapterEnabledMap,
   type StaleItem,
+  type WaypathHealthResult,
 } from '../contracts';
+import { queryTruthDirect, searchTruthKernel } from '../archive-kernel/search/index.js';
+import type { ScoredResult } from '../archive-kernel/search/index.js';
 import { createSessionRuntime, type SessionRuntimeOptions } from '../session-runtime';
 import { createJcpLiveReader } from '../adapters/jcp/index.js';
 import { buildLocalArchiveBundle, buildTruthDirectBundle } from '../jarvis_fusion/archive-provider.js';
@@ -25,10 +32,12 @@ import { synthesizePage, refreshPage as refreshKnowledgePage } from '../knowledg
 import { submitCandidate, reviewCandidate, resolveContradiction as resolveContradictionEngine } from '../promotion/index.js';
 import { expandGraphContext, executePattern } from '../ontology-support/index.js';
 import { createTruthKernelStorage, defaultTruthKernelStoreLocation } from '../jarvis_fusion/truth-kernel/index.js';
+import { healthCheck, sourceStatus as buildSourceStatusResult } from './health.js';
 
 export interface FacadeOptions extends SessionRuntimeOptions {
   readonly runtime?: SessionRuntime;
   readonly reviewQueueLimit?: number;
+  readonly sourceAdaptersEnabled?: SourceAdapterEnabledMap;
 }
 
 export type ManagedFacadeApi = FacadeApi & {
@@ -42,7 +51,7 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
   const description: FacadeDescription = {
     name: 'waypath-facade',
     host_shims: ['codex', 'claude-code'],
-    verbs: ['session-start', 'recall', 'page', 'promote', 'review', 'review-queue', 'inspect-page', 'inspect-candidate', 'graph-query', 'resolve-contradiction', 'refresh-page'],
+    verbs: ['session-start', 'recall', 'page', 'promote', 'review', 'review-queue', 'source-status', 'health', 'inspect-page', 'inspect-candidate', 'graph-query', 'resolve-contradiction', 'refresh-page', 'explain'],
     access_layer: 'operator-facing',
     session_runtime: 'local-first',
   };
@@ -208,6 +217,18 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
         contradiction_items: contradictionItems,
       };
     },
+    sourceStatus(): LocalSourceStatusResult {
+      return buildSourceStatusResult({
+        sourceAdaptersEnabled: options.sourceAdaptersEnabled,
+        jcpLiveReader,
+      });
+    },
+    health(): WaypathHealthResult {
+      return healthCheck(store, {
+        sourceAdaptersEnabled: options.sourceAdaptersEnabled,
+        jcpLiveReader,
+      });
+    },
     inspectPage(pageId: string): InspectPageResult {
       const page = store.getKnowledgePage(pageId);
       if (!page) {
@@ -269,6 +290,20 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
         new_status: result.new_status,
       };
     },
+    explain(query: string): ExplainResult {
+      const truthResults = queryTruthDirect(query, { store });
+      const archiveResults = searchTruthKernel(query, {
+        store,
+        ...(options.recallWeights ? { recallWeights: options.recallWeights } : {}),
+      });
+      return {
+        operation: 'explain',
+        status: 'ready',
+        query,
+        truth_results: truthResults.map((r) => toExplainItem(r, store, true)),
+        archive_results: archiveResults.map((r) => toExplainItem(r, store, false)),
+      };
+    },
     graphQuery(entityId: string, pattern?: GraphTraversalPattern): GraphQueryResult {
       const result = pattern
         ? executePattern(store, { pattern, seed_entity_id: entityId })
@@ -321,6 +356,52 @@ export function createFacade(options: FacadeOptions = {}): ManagedFacadeApi {
         },
       };
     },
+  };
+}
+
+function toExplainItem(
+  result: ScoredResult,
+  store: ReturnType<typeof createTruthKernelStorage>,
+  isTruth: boolean,
+): ExplainResultItem {
+  const { candidate, score, breakdown } = result;
+
+  // Look up provenance_id from the original record based on source_type
+  let provenanceId: string | null = null;
+  if (candidate.source_type === 'decision') {
+    provenanceId = store.getDecision(candidate.id)?.provenance_id ?? null;
+  } else if (candidate.source_type === 'memory') {
+    provenanceId = store.getPromotedMemory(candidate.id)?.provenance_id ?? null;
+  }
+
+  let provenanceChain: ExplainResultItem['provenance_chain'] = null;
+  if (provenanceId) {
+    const prov = store.getProvenance(provenanceId);
+    if (prov) {
+      provenanceChain = [{
+        provenance_id: provenanceId,
+        source_ref: prov.source_ref,
+        promoted_at: prov.promoted_at ?? null,
+        promoted_by: prov.promoted_by ?? null,
+        confidence: prov.confidence ?? null,
+      }];
+    }
+  }
+
+  return {
+    id: candidate.id,
+    title: candidate.title,
+    source_system: candidate.source_system,
+    source_kind: candidate.source_kind,
+    score_breakdown: {
+      keyword: breakdown.keyword,
+      graph: breakdown.graph,
+      provenance: breakdown.provenance,
+      lexical: breakdown.lexical,
+      total: isTruth ? score : breakdown.rrf_fused,
+    },
+    provenance_chain: provenanceChain,
+    graph_path: null,
   };
 }
 

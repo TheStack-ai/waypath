@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 
 import type { SourceAdapterEnabledMap, SourceKind, SourceSystem } from '../contracts/index.js';
 import type { AccessTier, MemoryType } from './contracts.js';
@@ -16,6 +15,8 @@ import type {
   SourceSnapshot,
   SourceProvenanceInput,
 } from './source-readers-contracts.js';
+import type { SqliteDb } from '../shared/sqlite-driver.js';
+import { createSqliteDriver } from '../shared/sqlite-factory.js';
 import { slugify } from '../shared/text.js';
 import { nowIso } from '../shared/time.js';
 
@@ -113,11 +114,11 @@ function makeProvenance(
   };
 }
 
-function openReadonlyDatabase(path: string): DatabaseSync {
-  return new DatabaseSync(path, { readOnly: true });
+function openReadonlyDatabase(path: string): SqliteDb {
+  return createSqliteDriver().open(path, { readOnly: true });
 }
 
-function all<T extends SqliteRow>(db: DatabaseSync, sql: string, params: Record<string, unknown> = {}): readonly T[] {
+function all<T extends SqliteRow>(db: SqliteDb, sql: string, params: Record<string, unknown> = {}): readonly T[] {
   return db.prepare(sql).all(params) as readonly T[];
 }
 

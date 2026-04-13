@@ -1,12 +1,12 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { DatabaseSync } from 'node:sqlite';
 
 import { assert, assertEqual } from '../../src/shared/assert';
 import { createJarvisMemoryDbSourceReader } from '../../src/jarvis_fusion/source-readers-local';
+import { createSqliteDriver } from '../../src/shared/sqlite-factory';
 
 function createLargeJarvisFixtureDb(path: string): void {
-  const db = new DatabaseSync(path);
+  const db = createSqliteDriver().open(path);
   db.exec(`
     CREATE TABLE entities (
       id TEXT PRIMARY KEY,

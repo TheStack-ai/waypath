@@ -11,7 +11,7 @@ export async function runFacadeUnitTest(): Promise<void> {
 
   assertEqual(description.name, 'waypath-facade');
   assertDeepEqual(description.host_shims, ['codex', 'claude-code']);
-  assertDeepEqual(description.verbs, ['session-start', 'recall', 'page', 'promote', 'review', 'review-queue', 'inspect-page', 'inspect-candidate', 'graph-query', 'resolve-contradiction', 'refresh-page']);
+  assertDeepEqual(description.verbs, ['session-start', 'recall', 'page', 'promote', 'review', 'review-queue', 'source-status', 'health', 'inspect-page', 'inspect-candidate', 'graph-query', 'resolve-contradiction', 'refresh-page', 'explain']);
 
   const session = facade.sessionStart({
     project: 'unit-project',

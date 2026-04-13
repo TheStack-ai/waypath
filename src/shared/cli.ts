@@ -1,6 +1,7 @@
 export interface CliIo {
   stdout: { write(chunk: string): void };
   stderr: { write(chunk: string): void };
+  stdin?: NodeJS.ReadableStream;
 }
 
 export interface CliArgs {
@@ -23,6 +24,10 @@ export interface CliArgs {
   scopeRef?: string;
   keepPreferenceId?: string;
   resolutionNotes?: string;
+  path?: string;
+  benchmarkStorePath?: string;
+  projectName?: string;
+  format?: string;
   help: boolean;
 }
 
@@ -56,6 +61,10 @@ export function createCliArgs(argv: string[]): CliArgs {
     if (token === '--scope-ref') { args.scopeRef = readValue(values, ++index, '--scope-ref'); continue; }
     if (token === '--keep-preference-id') { args.keepPreferenceId = readValue(values, ++index, '--keep-preference-id'); continue; }
     if (token === '--resolution-notes') { args.resolutionNotes = readValue(values, ++index, '--resolution-notes'); continue; }
+    if (token === '--path') { args.path = readValue(values, ++index, '--path'); continue; }
+    if (token === '--benchmark-store-path') { args.benchmarkStorePath = readValue(values, ++index, '--benchmark-store-path'); continue; }
+    if (token === '--project-name') { args.projectName = readValue(values, ++index, '--project-name'); continue; }
+    if (token === '--format') { args.format = readValue(values, ++index, '--format'); continue; }
     throw new Error(`Unknown CLI flag: ${token}`);
   }
 
@@ -86,8 +95,18 @@ export function formatUsage(): string {
     '  waypath import-seed [--project <name>] [--store-path <path>] [--json]',
     '  waypath import-local [--project <name>] [--store-path <path>] [--json]',
     '  waypath source-status [--json]',
+    '  waypath health [--json] [--store-path <path>]',
+    '  waypath backup --path <directory> [--json] [--store-path <path>]',
+    '  waypath rebuild-fts [--json] [--store-path <path>]',
+    '  waypath db-stats [--json] [--store-path <path>]',
+    '  waypath mcp-server [--store-path <path>]',
     '  waypath resolve-contradiction --key <key> --keep-preference-id <id> [--scope-ref <ref>] [--resolution-notes <text>] [--json]',
     '  waypath refresh-page --page-id <id> [--json]',
+    '  waypath explain --query <text> [--json] [--store-path <path>]',
+    '  waypath export --format <claude-md|agents-md|json> [--store-path <path>]',
+    '  waypath history --entity-id <id> [--json] [--store-path <path>]',
+    '  waypath benchmark [--json] [--store-path <path>]',
+    '  waypath scan --project <name> [--json] [--store-path <path>]',
     '  waypath --help',
   ].join('\n');
 }

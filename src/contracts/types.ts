@@ -287,6 +287,45 @@ export interface LocalSourceStatusResult {
   sources: LocalSourceStatusItem[];
 }
 
+export interface WaypathSourceHealthStatus {
+  reader: LocalSourceStatusItem['reader'];
+  enabled: boolean;
+  available: boolean;
+  adapter_status: LocalSourceStatusItem['adapter_status'];
+  path: string | null;
+  ok: boolean;
+  message: string;
+}
+
+export interface WaypathTruthKernelStatus {
+  ok: boolean;
+  location: string;
+  schema_version: number;
+  message: string;
+  integrity_check: string;
+}
+
+export interface WaypathFtsSyncStatus {
+  ok: boolean;
+  indexed_rows: number;
+  expected_rows: number;
+  missing_rows: number;
+}
+
+export interface WaypathHealthResult {
+  operation: 'health';
+  status: 'ready';
+  ok: boolean;
+  truth_kernel: WaypathTruthKernelStatus;
+  fts_sync: WaypathFtsSyncStatus;
+  stale_pages: number;
+  pending_reviews: number;
+  jcp_status: WaypathSourceHealthStatus;
+  mempalace_status: WaypathSourceHealthStatus;
+  db_size_bytes: number;
+  message: string;
+}
+
 export interface SessionContextPack {
   session: SessionIdentity;
   current_focus: SessionFocus;
@@ -315,6 +354,39 @@ export interface RefreshPageResult {
   new_status: string;
 }
 
+export interface ExplainResultItem {
+  id: string;
+  title: string;
+  source_system: SourceSystem;
+  source_kind: SourceKind;
+  score_breakdown: {
+    keyword: number;
+    graph: number;
+    provenance: number;
+    lexical: number;
+    total: number;
+  };
+  provenance_chain: {
+    provenance_id: string;
+    source_ref: string;
+    promoted_at: string | null;
+    promoted_by: string | null;
+    confidence: number | null;
+  }[] | null;
+  graph_path: {
+    seed: string;
+    steps: { entity: string; relation: string; depth: number }[];
+  } | null;
+}
+
+export interface ExplainResult {
+  operation: 'explain';
+  status: 'ready';
+  query: string;
+  truth_results: ExplainResultItem[];
+  archive_results: ExplainResultItem[];
+}
+
 export type FacadeVerb =
   | 'session-start'
   | 'recall'
@@ -322,11 +394,14 @@ export type FacadeVerb =
   | 'promote'
   | 'review'
   | 'review-queue'
+  | 'source-status'
+  | 'health'
   | 'inspect-page'
   | 'inspect-candidate'
   | 'graph-query'
   | 'resolve-contradiction'
-  | 'refresh-page';
+  | 'refresh-page'
+  | 'explain';
 
 export interface FacadeDescription {
   name: string;
@@ -486,11 +561,14 @@ export interface FacadeApi {
   promote(subject: string): PromoteResult;
   review(candidateId: string, status: PromotionCandidateView['status'], notes?: string): ReviewResult;
   reviewQueue(): ReviewQueueResult;
+  sourceStatus(): LocalSourceStatusResult;
+  health(): WaypathHealthResult;
   inspectPage(pageId: string): InspectPageResult;
   inspectCandidate(candidateId: string): InspectCandidateResult;
   graphQuery(entityId: string, pattern?: GraphTraversalPattern): GraphQueryResult;
   resolveContradiction(key: string, keepPreferenceId: string, scopeRef?: string, notes?: string): ResolveContradictionResult;
   refreshPage(pageId: string): RefreshPageResult;
+  explain(query: string): ExplainResult;
 }
 
 export interface SessionRuntime {

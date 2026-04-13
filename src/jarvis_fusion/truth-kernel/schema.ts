@@ -1,6 +1,6 @@
 import type { MemoryType, AccessTier, KnowledgePageStatus, KnowledgePageType, TruthStatus } from '../contracts.js';
 
-export const TRUTH_KERNEL_SCHEMA_VERSION = 2;
+export const TRUTH_KERNEL_SCHEMA_VERSION = 3;
 
 export const MEMORY_TYPES: readonly MemoryType[] = [
   'episodic',
@@ -228,6 +228,22 @@ export const TRUTH_KERNEL_MIGRATIONS: readonly string[] = [
   `,
 ] as const;
 
+/**
+ * Schema v3 migration: add valid_from / valid_until temporal columns.
+ * ALTER TABLE is idempotent via IF NOT EXISTS-style try/catch in the runner.
+ * Existing rows get valid_from = created_at, valid_until = NULL (currently valid).
+ */
+export const TRUTH_KERNEL_V3_TEMPORAL_COLUMNS: readonly {
+  readonly table: string;
+  readonly backfillSource: string;
+}[] = [
+  { table: 'entities', backfillSource: 'created_at' },
+  { table: 'decisions', backfillSource: 'created_at' },
+  { table: 'preferences', backfillSource: 'created_at' },
+  { table: 'relationships', backfillSource: 'created_at' },
+  { table: 'promoted_memories', backfillSource: 'created_at' },
+];
+
 export function buildTruthKernelMigrationSql(): string {
   return [
     'PRAGMA foreign_keys = ON',
@@ -235,4 +251,18 @@ export function buildTruthKernelMigrationSql(): string {
     `INSERT OR REPLACE INTO schema_meta (schema_name, schema_version, applied_at)
      VALUES ('truth_kernel', ${TRUTH_KERNEL_SCHEMA_VERSION}, CURRENT_TIMESTAMP)`,
   ].join(';\n');
+}
+
+/**
+ * Build ALTER TABLE statements for v3 temporal columns.
+ * Each ALTER is run individually so that already-migrated DBs don't fail.
+ */
+export function buildTemporalMigrationStatements(): readonly string[] {
+  const stmts: string[] = [];
+  for (const { table, backfillSource } of TRUTH_KERNEL_V3_TEMPORAL_COLUMNS) {
+    stmts.push(`ALTER TABLE ${table} ADD COLUMN valid_from TEXT`);
+    stmts.push(`ALTER TABLE ${table} ADD COLUMN valid_until TEXT`);
+    stmts.push(`UPDATE ${table} SET valid_from = ${backfillSource} WHERE valid_from IS NULL`);
+  }
+  return stmts;
 }

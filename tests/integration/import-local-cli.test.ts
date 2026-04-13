@@ -2,11 +2,11 @@ import { mkdtempSync } from 'node:fs';
 import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 
 import { assert, assertEqual } from '../../src/shared/assert';
 import { runCli } from '../../src/cli';
 import { createTruthKernelStorage } from '../../src/jarvis_fusion/truth-kernel';
+import { createSqliteDriver } from '../../src/shared/sqlite-factory';
 
 function captureIo() {
   const stdout: string[] = [];
@@ -22,7 +22,7 @@ function captureIo() {
 }
 
 function createJarvisFixtureDb(path: string): void {
-  const db = new DatabaseSync(path);
+  const db = createSqliteDriver().open(path);
   db.exec(`
     CREATE TABLE entities (
       id TEXT PRIMARY KEY,
@@ -126,7 +126,7 @@ function createJarvisFixtureDb(path: string): void {
 }
 
 function createJarvisBrainFixtureDb(path: string): void {
-  const db = new DatabaseSync(path);
+  const db = createSqliteDriver().open(path);
   db.exec(`
     CREATE TABLE entities (
       id TEXT PRIMARY KEY,

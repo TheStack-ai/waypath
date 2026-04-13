@@ -75,6 +75,8 @@ export interface TruthEntityRecord {
   readonly canonical_page_id: string | null;
   readonly created_at: ISODateTimeString;
   readonly updated_at: ISODateTimeString;
+  readonly valid_from?: ISODateTimeString | null;
+  readonly valid_until?: ISODateTimeString | null;
 }
 
 export interface TruthRelationshipRecord {
@@ -87,6 +89,8 @@ export interface TruthRelationshipRecord {
   readonly provenance_id: string | null;
   readonly created_at: ISODateTimeString;
   readonly updated_at: ISODateTimeString;
+  readonly valid_from?: ISODateTimeString | null;
+  readonly valid_until?: ISODateTimeString | null;
 }
 
 export interface TruthDecisionRecord {
@@ -100,6 +104,8 @@ export interface TruthDecisionRecord {
   readonly provenance_id: string | null;
   readonly created_at: ISODateTimeString;
   readonly updated_at: ISODateTimeString;
+  readonly valid_from?: ISODateTimeString | null;
+  readonly valid_until?: ISODateTimeString | null;
 }
 
 export interface TruthPreferenceRecord {
@@ -113,6 +119,8 @@ export interface TruthPreferenceRecord {
   readonly provenance_id: string | null;
   readonly created_at: ISODateTimeString;
   readonly updated_at: ISODateTimeString;
+  readonly valid_from?: ISODateTimeString | null;
+  readonly valid_until?: ISODateTimeString | null;
 }
 
 export interface TruthPromotedMemoryRecord {
@@ -126,6 +134,8 @@ export interface TruthPromotedMemoryRecord {
   readonly provenance_id: string | null;
   readonly created_at: ISODateTimeString;
   readonly updated_at: ISODateTimeString;
+  readonly valid_from?: ISODateTimeString | null;
+  readonly valid_until?: ISODateTimeString | null;
 }
 
 export interface TruthClaimRecord {

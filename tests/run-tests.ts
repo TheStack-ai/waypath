@@ -3,6 +3,7 @@ import { runPageServiceUnitTest } from './unit/page-service.test';
 import { runSessionRuntimeUnitTest } from './unit/session-runtime.test';
 import { runSourceReadersLocalUnitTest } from './unit/source-readers-local.test';
 import { runTruthKernelUnitTest } from './unit/truth-kernel.test';
+import { runMcpServerUnitTest } from './unit/mcp-server.test';
 import { runSourceReaderBootstrapUnitTest } from './unit/source-reader-bootstrap.test';
 import { runArchiveProviderUnitTest } from './unit/archive-provider.test';
 import { runMemPalaceProviderUnitTest } from './unit/mempalace-provider.test';
@@ -75,6 +76,33 @@ import {
   testMaxResultsLimit,
 } from './unit/ontology-support.test';
 import {
+  testTemporalMigrationBackfill,
+  testListActiveEntitiesExcludesExpired,
+  testSupersedeEntity,
+  testSupersedeDecision,
+  testListEntityHistory,
+  testListDecisionHistory,
+  testSchemaVersion3,
+  testPreferenceTemporalValidity,
+} from './unit/temporal-validity.test';
+import {
+  testBenchmarkQueriesValid,
+  testBenchmarkQueryStructure,
+  testBenchmarkSuiteRuns,
+  testWaypathFindsSeededData,
+  testGrepBaselineFindsSeededData,
+  testBenchmarkEmptyExpectedIds,
+} from './benchmark/benchmark.test';
+import {
+  testScanNoSources,
+  testScanDetectsMemPalaceFiles,
+  testScanIdempotent,
+  testScanDetectsModifiedFiles,
+  testScanUpdatesLastScanAt,
+  testScanNoAutoPromote,
+  testScanMultipleDirectories,
+} from './unit/scanner.test';
+import {
   runClaudeCodeCliIntegrationTest,
   runCodexCliIntegrationTest,
   runPageCliIntegrationTest,
@@ -89,6 +117,24 @@ import {
   runImportLocalCliIntegrationTest,
   runSourceStatusCliIntegrationTest,
 } from './integration/import-local-cli.test';
+import { runDbCliIntegrationTest } from './integration/db-cli.test';
+import {
+  testExplainReturnsExplainResult,
+  testExplainTruthResultsHaveScoreBreakdown,
+  testExplainTruthResultKeywordNonZeroForMatchingQuery,
+  testExplainItemHasRequiredFields,
+  testExplainArchiveResultsTotalIsRrfFused,
+  testExplainEmptyQueryReturnsEmptyResults,
+} from './unit/explain.test';
+import {
+  testExportClaudeMdContainsHeader,
+  testExportClaudeMdContainsDecisions,
+  testExportClaudeMdContainsPreferences,
+  testExportClaudeMdContainsEntities,
+  testExportAgentsMdContainsHeader,
+  testExportAgentsMdContainsCodingRules,
+  testExportEmptyStoreReturnsValidMarkdown,
+} from './unit/export.test';
 
 interface TestCase {
   name: string;
@@ -101,6 +147,7 @@ const tests: TestCase[] = [
   { name: 'session runtime unit', run: runSessionRuntimeUnitTest },
   { name: 'source-readers-local unit', run: runSourceReadersLocalUnitTest },
   { name: 'truth-kernel unit', run: runTruthKernelUnitTest },
+  { name: 'mcp server unit', run: runMcpServerUnitTest },
   { name: 'source-reader bootstrap unit', run: runSourceReaderBootstrapUnitTest },
   { name: 'archive provider unit', run: runArchiveProviderUnitTest },
   { name: 'mempalace provider unit', run: runMemPalaceProviderUnitTest },
@@ -117,6 +164,7 @@ const tests: TestCase[] = [
   { name: 'inspect cli integration', run: runInspectCliIntegrationTest },
   { name: 'import-seed cli integration', run: runImportSeedCliIntegrationTest },
   { name: 'import-local cli integration', run: runImportLocalCliIntegrationTest },
+  { name: 'db cli integration', run: runDbCliIntegrationTest },
   { name: 'source-status cli integration', run: runSourceStatusCliIntegrationTest },
   { name: 'promotion: submit creates records', run: testSubmitCandidateCreatesRecords },
   { name: 'promotion: accepted creates truth', run: testReviewAcceptedCreatesTruth },
@@ -175,6 +223,43 @@ const tests: TestCase[] = [
   { name: 'ontology: pattern contradiction_lookup', run: testPatternContradictionLookup },
   { name: 'ontology: contradiction filters superseded', run: testContradictionLookupFiltersSuperseded },
   { name: 'ontology: maxResults limit', run: testMaxResultsLimit },
+  { name: 'explain: returns ExplainResult', run: testExplainReturnsExplainResult },
+  { name: 'explain: truth results have score breakdown', run: testExplainTruthResultsHaveScoreBreakdown },
+  { name: 'explain: keyword non-zero for matching query', run: testExplainTruthResultKeywordNonZeroForMatchingQuery },
+  { name: 'explain: item has required fields', run: testExplainItemHasRequiredFields },
+  { name: 'explain: archive total is rrf_fused', run: testExplainArchiveResultsTotalIsRrfFused },
+  { name: 'explain: empty query returns empty results', run: testExplainEmptyQueryReturnsEmptyResults },
+  { name: 'export: claude-md header', run: testExportClaudeMdContainsHeader },
+  { name: 'export: claude-md decisions', run: testExportClaudeMdContainsDecisions },
+  { name: 'export: claude-md preferences', run: testExportClaudeMdContainsPreferences },
+  { name: 'export: claude-md entities', run: testExportClaudeMdContainsEntities },
+  { name: 'export: agents-md header', run: testExportAgentsMdContainsHeader },
+  { name: 'export: agents-md coding rules', run: testExportAgentsMdContainsCodingRules },
+  { name: 'export: empty store returns valid markdown', run: testExportEmptyStoreReturnsValidMarkdown },
+  // Phase 6: Temporal Validity
+  { name: 'temporal: migration backfill', run: testTemporalMigrationBackfill },
+  { name: 'temporal: listActiveEntities excludes expired', run: testListActiveEntitiesExcludesExpired },
+  { name: 'temporal: supersede entity', run: testSupersedeEntity },
+  { name: 'temporal: supersede decision', run: testSupersedeDecision },
+  { name: 'temporal: entity history', run: testListEntityHistory },
+  { name: 'temporal: decision history chain', run: testListDecisionHistory },
+  { name: 'temporal: schema version 3', run: testSchemaVersion3 },
+  { name: 'temporal: preference validity', run: testPreferenceTemporalValidity },
+  // Phase 7: Benchmark Suite
+  { name: 'benchmark: queries valid', run: testBenchmarkQueriesValid },
+  { name: 'benchmark: query structure', run: testBenchmarkQueryStructure },
+  { name: 'benchmark: suite runs', run: testBenchmarkSuiteRuns },
+  { name: 'benchmark: waypath finds seeded data', run: testWaypathFindsSeededData },
+  { name: 'benchmark: grep baseline finds seeded data', run: testGrepBaselineFindsSeededData },
+  { name: 'benchmark: empty expected IDs', run: testBenchmarkEmptyExpectedIds },
+  // Phase 8: Dream Cycle Scan
+  { name: 'scan: no sources', run: testScanNoSources },
+  { name: 'scan: detects mempalace files', run: testScanDetectsMemPalaceFiles },
+  { name: 'scan: idempotent', run: testScanIdempotent },
+  { name: 'scan: detects modified files', run: testScanDetectsModifiedFiles },
+  { name: 'scan: updates last_scan_at', run: testScanUpdatesLastScanAt },
+  { name: 'scan: no auto-promote', run: testScanNoAutoPromote },
+  { name: 'scan: multiple directories', run: testScanMultipleDirectories },
 ];
 
 async function main(): Promise<void> {

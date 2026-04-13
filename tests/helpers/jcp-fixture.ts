@@ -1,15 +1,23 @@
-import { DatabaseSync } from 'node:sqlite';
+import { createSqliteDriver } from '../../src/shared/sqlite-factory';
 
 export function createJcpFixtureDb(path: string, project = 'alpha'): void {
-  const db = new DatabaseSync(path);
+  const db = createSqliteDriver().open(path);
   db.exec(`
     CREATE TABLE entities (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       entity_type TEXT NOT NULL,
       properties TEXT NOT NULL DEFAULT '{}',
+      aliases TEXT NOT NULL DEFAULT '[]',
       confidence REAL NOT NULL DEFAULT 1.0,
-      updated_at TEXT NOT NULL
+      valid_from TEXT NOT NULL DEFAULT '',
+      valid_until TEXT,
+      created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL,
+      source_agent TEXT DEFAULT 'claude_code',
+      access_count INTEGER DEFAULT 0,
+      last_accessed TEXT,
+      tier TEXT DEFAULT 'hot'
     );
     CREATE TABLE relationships (
       id TEXT PRIMARY KEY,
@@ -44,8 +52,8 @@ export function createJcpFixtureDb(path: string, project = 'alpha'): void {
   `);
 
   const entityStatement = db.prepare(`
-    INSERT INTO entities (id, name, entity_type, properties, confidence, updated_at)
-    VALUES (:id, :name, :entity_type, :properties, :confidence, :updated_at)
+    INSERT INTO entities (id, name, entity_type, properties, confidence, valid_from, updated_at)
+    VALUES (:id, :name, :entity_type, :properties, :confidence, :updated_at, :updated_at)
   `);
   const relationshipStatement = db.prepare(`
     INSERT INTO relationships (id, subject_id, predicate, object_id, confidence, updated_at, weight)

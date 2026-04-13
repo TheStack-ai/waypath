@@ -1,7 +1,9 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+
+import type { SqliteDb } from '../../shared/sqlite-driver.js';
+import { createSqliteDriver } from '../../shared/sqlite-factory.js';
 
 const DEFAULT_JARVIS_DB_PATH = join(homedir(), '.claude', 'jarvis', 'data', 'jarvis.db');
 
@@ -72,8 +74,8 @@ function getJarvisDbPath(): string {
   return process.env.JARVIS_FUSION_JARVIS_DB_PATH || DEFAULT_JARVIS_DB_PATH;
 }
 
-export function openReadonlyDatabase(path: string): DatabaseSync {
-  return new DatabaseSync(path, { readOnly: true });
+export function openReadonlyDatabase(path: string): SqliteDb {
+  return createSqliteDriver().open(path, { readOnly: true });
 }
 
 function normalizeLimit(limit: number, fallback: number): number {
@@ -125,7 +127,7 @@ function buildInClause(
 
 function withReadonlyDatabase<T>(
   path: string,
-  operation: (db: DatabaseSync) => T,
+  operation: (db: SqliteDb) => T,
 ): T {
   const db = openReadonlyDatabase(path);
   try {
@@ -136,7 +138,7 @@ function withReadonlyDatabase<T>(
 }
 
 function all<T extends SqliteRow>(
-  db: DatabaseSync,
+  db: SqliteDb,
   sql: string,
   params: Readonly<Record<string, unknown>> = {},
 ): readonly T[] {
@@ -144,7 +146,7 @@ function all<T extends SqliteRow>(
 }
 
 function get<T extends SqliteRow>(
-  db: DatabaseSync,
+  db: SqliteDb,
   sql: string,
   params: Readonly<Record<string, unknown>> = {},
 ): T | undefined {

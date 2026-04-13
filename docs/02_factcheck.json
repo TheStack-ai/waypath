@@ -1,0 +1,27 @@
+{
+  "total_claims": 7,
+  "verified": 7,
+  "corrected": 3,
+  "unverified": 0,
+  "corrections": [
+    {
+      "slide": "gbrain",
+      "original": "23,000 GitHub Stars",
+      "corrected": "6,500+ Stars (as of April 13, 2026)",
+      "source": "OSSInsight/Star-history 2026.04"
+    },
+    {
+      "slide": "mem0",
+      "original": "$19/mo pricing",
+      "corrected": "$29/mo (Pro starting price)",
+      "source": "mem0.ai official pricing 2026"
+    },
+    {
+      "slide": "Letta",
+      "original": "Standard MemGPT",
+      "corrected": "Letta v1.0 Context Repositories",
+      "source": "letta.ai v1.0 release notes"
+    }
+  ],
+  "verdict": "corrections_made"
+}

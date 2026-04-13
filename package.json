@@ -9,7 +9,7 @@
     "README.md"
   ],
   "engines": {
-    "node": ">=25.0.0"
+    "node": ">=22.0.0"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -21,7 +21,11 @@
     "pack:release": "npm pack"
   },
   "bin": {
-    "waypath": "dist/src/cli.js"
+    "waypath": "dist/src/cli.js",
+    "waypath-mcp-server": "dist/src/mcp/bin.js"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.0.0"
   },
   "keywords": [
     "waypath",

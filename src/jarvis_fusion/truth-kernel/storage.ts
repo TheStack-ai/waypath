@@ -1,6 +1,5 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 
 import type {
   SourceKind,
@@ -17,11 +16,14 @@ import type {
   TruthRelationshipRecord,
 } from '../contracts.js';
 import type { EvidenceBundle, PromotionCandidateView, StoredKnowledgePage } from '../../contracts/index.js';
-import { TRUTH_KERNEL_SCHEMA_VERSION, buildTruthKernelMigrationSql } from './schema.js';
+import type { SqliteDb, SqliteDriver } from '../../shared/sqlite-driver.js';
+import { createSqliteDriver } from '../../shared/sqlite-factory.js';
+import { TRUTH_KERNEL_SCHEMA_VERSION, buildTruthKernelMigrationSql, buildTemporalMigrationStatements } from './schema.js';
 import { nowIso } from '../../shared/time.js';
 
 export interface SqliteTruthKernelStoreOptions {
   readonly autoMigrate?: boolean;
+  readonly driver?: SqliteDriver;
 }
 
 export interface TruthKernelSeedOptions {
@@ -119,6 +121,8 @@ function mapEntity(row: Record<string, unknown>): TruthEntityRecord {
     canonical_page_id: row.canonical_page_id === null ? null : String(row.canonical_page_id),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
+    valid_from: row.valid_from === null || row.valid_from === undefined ? null : String(row.valid_from),
+    valid_until: row.valid_until === null || row.valid_until === undefined ? null : String(row.valid_until),
   };
 }
 
@@ -134,6 +138,8 @@ function mapDecision(row: Record<string, unknown>): TruthDecisionRecord {
     provenance_id: row.provenance_id === null ? null : String(row.provenance_id),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
+    valid_from: row.valid_from === null || row.valid_from === undefined ? null : String(row.valid_from),
+    valid_until: row.valid_until === null || row.valid_until === undefined ? null : String(row.valid_until),
   };
 }
 
@@ -148,6 +154,8 @@ function mapRelationship(row: Record<string, unknown>): TruthRelationshipRecord 
     provenance_id: row.provenance_id === null ? null : String(row.provenance_id),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
+    valid_from: row.valid_from === null || row.valid_from === undefined ? null : String(row.valid_from),
+    valid_until: row.valid_until === null || row.valid_until === undefined ? null : String(row.valid_until),
   };
 }
 
@@ -163,6 +171,8 @@ function mapPreference(row: Record<string, unknown>): TruthPreferenceRecord {
     provenance_id: row.provenance_id === null ? null : String(row.provenance_id),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
+    valid_from: row.valid_from === null || row.valid_from === undefined ? null : String(row.valid_from),
+    valid_until: row.valid_until === null || row.valid_until === undefined ? null : String(row.valid_until),
   };
 }
 
@@ -178,6 +188,8 @@ function mapPromotedMemory(row: Record<string, unknown>): TruthPromotedMemoryRec
     provenance_id: row.provenance_id === null ? null : String(row.provenance_id),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
+    valid_from: row.valid_from === null || row.valid_from === undefined ? null : String(row.valid_from),
+    valid_until: row.valid_until === null || row.valid_until === undefined ? null : String(row.valid_until),
   };
 }
 
@@ -233,17 +245,28 @@ function mapRelationshipSummary(record: TruthRelationshipRecord): GraphRelations
 
 export class SqliteTruthKernelStorage implements TruthKernelStore {
   readonly location: string;
-  readonly db: DatabaseSync;
+  readonly db: SqliteDb;
 
   constructor(location: string, options: SqliteTruthKernelStoreOptions = {}) {
     this.location = normalizeLocation(location);
     ensureParentDirectory(this.location);
-    this.db = new DatabaseSync(this.location);
+    this.db = (options.driver ?? createSqliteDriver()).open(this.location);
     if (options.autoMigrate ?? true) this.migrate();
   }
 
   migrate(): void {
     this.db.exec(buildTruthKernelMigrationSql());
+    // v3: temporal validity columns — each ALTER run individually (idempotent)
+    if (this.getSchemaMetaVersion('temporal_version') !== 1) {
+      for (const stmt of buildTemporalMigrationStatements()) {
+        try {
+          this.db.exec(stmt);
+        } catch {
+          // Column already exists — safe to ignore
+        }
+      }
+      this.setSchemaMetaVersion('temporal_version', 1);
+    }
     if (this.getSchemaMetaVersion(WAYPATH_FTS_SCHEMA_NAME) !== WAYPATH_FTS_SCHEMA_VERSION) {
       this.rebuildWaypathFts();
       this.setSchemaMetaVersion(WAYPATH_FTS_SCHEMA_NAME, WAYPATH_FTS_SCHEMA_VERSION);
@@ -288,9 +311,13 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
   }
 
   upsertEntity(record: TruthEntityRecord): void {
-    this.run(`INSERT INTO entities (entity_id, entity_type, name, summary, state_json, status, canonical_page_id, created_at, updated_at)
-      VALUES (:entity_id,:entity_type,:name,:summary,:state_json,:status,:canonical_page_id,:created_at,:updated_at)
-      ON CONFLICT(entity_id) DO UPDATE SET entity_type=excluded.entity_type,name=excluded.name,summary=excluded.summary,state_json=excluded.state_json,status=excluded.status,canonical_page_id=excluded.canonical_page_id,updated_at=excluded.updated_at`, asParams(record));
+    this.run(`INSERT INTO entities (entity_id, entity_type, name, summary, state_json, status, canonical_page_id, created_at, updated_at, valid_from, valid_until)
+      VALUES (:entity_id,:entity_type,:name,:summary,:state_json,:status,:canonical_page_id,:created_at,:updated_at,:valid_from,:valid_until)
+      ON CONFLICT(entity_id) DO UPDATE SET entity_type=excluded.entity_type,name=excluded.name,summary=excluded.summary,state_json=excluded.state_json,status=excluded.status,canonical_page_id=excluded.canonical_page_id,updated_at=excluded.updated_at,valid_from=excluded.valid_from,valid_until=excluded.valid_until`, {
+      ...asParams(record),
+      valid_from: record.valid_from ?? record.created_at,
+      valid_until: record.valid_until ?? null,
+    });
     this.upsertWaypathFtsEntry(
       'entities',
       record.entity_id,
@@ -302,9 +329,13 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
   }
 
   upsertDecision(record: TruthDecisionRecord): void {
-    this.run(`INSERT INTO decisions (decision_id,title,statement,status,scope_entity_id,effective_at,superseded_by,provenance_id,created_at,updated_at)
-      VALUES (:decision_id,:title,:statement,:status,:scope_entity_id,:effective_at,:superseded_by,:provenance_id,:created_at,:updated_at)
-      ON CONFLICT(decision_id) DO UPDATE SET title=excluded.title,statement=excluded.statement,status=excluded.status,scope_entity_id=excluded.scope_entity_id,effective_at=excluded.effective_at,superseded_by=excluded.superseded_by,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
+    this.run(`INSERT INTO decisions (decision_id,title,statement,status,scope_entity_id,effective_at,superseded_by,provenance_id,created_at,updated_at,valid_from,valid_until)
+      VALUES (:decision_id,:title,:statement,:status,:scope_entity_id,:effective_at,:superseded_by,:provenance_id,:created_at,:updated_at,:valid_from,:valid_until)
+      ON CONFLICT(decision_id) DO UPDATE SET title=excluded.title,statement=excluded.statement,status=excluded.status,scope_entity_id=excluded.scope_entity_id,effective_at=excluded.effective_at,superseded_by=excluded.superseded_by,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at,valid_from=excluded.valid_from,valid_until=excluded.valid_until`, {
+      ...asParams(record),
+      valid_from: record.valid_from ?? record.created_at,
+      valid_until: record.valid_until ?? null,
+    });
     this.upsertWaypathFtsEntry(
       'decisions',
       record.decision_id,
@@ -316,9 +347,13 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
   }
 
   upsertRelationship(record: TruthRelationshipRecord): void {
-    this.run(`INSERT INTO relationships (relationship_id,from_entity_id,relation_type,to_entity_id,weight,status,provenance_id,created_at,updated_at)
-      VALUES (:relationship_id,:from_entity_id,:relation_type,:to_entity_id,:weight,:status,:provenance_id,:created_at,:updated_at)
-      ON CONFLICT(relationship_id) DO UPDATE SET from_entity_id=excluded.from_entity_id,relation_type=excluded.relation_type,to_entity_id=excluded.to_entity_id,weight=excluded.weight,status=excluded.status,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
+    this.run(`INSERT INTO relationships (relationship_id,from_entity_id,relation_type,to_entity_id,weight,status,provenance_id,created_at,updated_at,valid_from,valid_until)
+      VALUES (:relationship_id,:from_entity_id,:relation_type,:to_entity_id,:weight,:status,:provenance_id,:created_at,:updated_at,:valid_from,:valid_until)
+      ON CONFLICT(relationship_id) DO UPDATE SET from_entity_id=excluded.from_entity_id,relation_type=excluded.relation_type,to_entity_id=excluded.to_entity_id,weight=excluded.weight,status=excluded.status,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at,valid_from=excluded.valid_from,valid_until=excluded.valid_until`, {
+      ...asParams(record),
+      valid_from: record.valid_from ?? record.created_at,
+      valid_until: record.valid_until ?? null,
+    });
   }
 
   upsertProvenance(record: { provenance_id: string; source_system: SourceSystem; source_kind: SourceKind; source_ref: string; observed_at: string | null; imported_at: string | null; promoted_at: string | null; promoted_by: string | null; confidence: number | null; notes: string | null; }): string {
@@ -329,9 +364,13 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
   }
 
   upsertPreference(record: TruthPreferenceRecord): void {
-    this.run(`INSERT INTO preferences (preference_id,subject_kind,subject_ref,key,value,strength,status,provenance_id,created_at,updated_at)
-      VALUES (:preference_id,:subject_kind,:subject_ref,:key,:value,:strength,:status,:provenance_id,:created_at,:updated_at)
-      ON CONFLICT(preference_id) DO UPDATE SET subject_kind=excluded.subject_kind,subject_ref=excluded.subject_ref,key=excluded.key,value=excluded.value,strength=excluded.strength,status=excluded.status,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
+    this.run(`INSERT INTO preferences (preference_id,subject_kind,subject_ref,key,value,strength,status,provenance_id,created_at,updated_at,valid_from,valid_until)
+      VALUES (:preference_id,:subject_kind,:subject_ref,:key,:value,:strength,:status,:provenance_id,:created_at,:updated_at,:valid_from,:valid_until)
+      ON CONFLICT(preference_id) DO UPDATE SET subject_kind=excluded.subject_kind,subject_ref=excluded.subject_ref,key=excluded.key,value=excluded.value,strength=excluded.strength,status=excluded.status,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at,valid_from=excluded.valid_from,valid_until=excluded.valid_until`, {
+      ...asParams(record),
+      valid_from: record.valid_from ?? record.created_at,
+      valid_until: record.valid_until ?? null,
+    });
     this.upsertWaypathFtsEntry(
       'preferences',
       record.preference_id,
@@ -343,9 +382,13 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
   }
 
   upsertPromotedMemory(record: TruthPromotedMemoryRecord): void {
-    this.run(`INSERT INTO promoted_memories (memory_id,memory_type,access_tier,summary,content,subject_entity_id,status,provenance_id,created_at,updated_at)
-      VALUES (:memory_id,:memory_type,:access_tier,:summary,:content,:subject_entity_id,:status,:provenance_id,:created_at,:updated_at)
-      ON CONFLICT(memory_id) DO UPDATE SET memory_type=excluded.memory_type,access_tier=excluded.access_tier,summary=excluded.summary,content=excluded.content,subject_entity_id=excluded.subject_entity_id,status=excluded.status,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at`, asParams(record));
+    this.run(`INSERT INTO promoted_memories (memory_id,memory_type,access_tier,summary,content,subject_entity_id,status,provenance_id,created_at,updated_at,valid_from,valid_until)
+      VALUES (:memory_id,:memory_type,:access_tier,:summary,:content,:subject_entity_id,:status,:provenance_id,:created_at,:updated_at,:valid_from,:valid_until)
+      ON CONFLICT(memory_id) DO UPDATE SET memory_type=excluded.memory_type,access_tier=excluded.access_tier,summary=excluded.summary,content=excluded.content,subject_entity_id=excluded.subject_entity_id,status=excluded.status,provenance_id=excluded.provenance_id,updated_at=excluded.updated_at,valid_from=excluded.valid_from,valid_until=excluded.valid_until`, {
+      ...asParams(record),
+      valid_from: record.valid_from ?? record.created_at,
+      valid_until: record.valid_until ?? null,
+    });
     this.upsertWaypathFtsEntry(
       'promoted_memories',
       record.memory_id,
@@ -526,7 +569,7 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
   }
 
   listActiveEntities(limit = 5): readonly TruthEntityRecord[] {
-    return this.all<Record<string, unknown>>(`SELECT * FROM entities WHERE status = 'active' ORDER BY updated_at DESC LIMIT :limit`, { limit }).map(mapEntity);
+    return this.all<Record<string, unknown>>(`SELECT * FROM entities WHERE status = 'active' AND valid_until IS NULL ORDER BY updated_at DESC LIMIT :limit`, { limit }).map(mapEntity);
   }
 
   listRelationshipsForEntity(entityId: string, limit = 10): readonly TruthRelationshipRecord[] {
@@ -556,23 +599,120 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
 
   listActiveDecisions(limit = 5, scopeEntityId?: string): readonly TruthDecisionRecord[] {
     return (scopeEntityId
-      ? this.all<Record<string, unknown>>(`SELECT * FROM decisions WHERE status = 'active' AND (scope_entity_id = :scope_entity_id OR scope_entity_id IS NULL) ORDER BY updated_at DESC LIMIT :limit`, { scope_entity_id: scopeEntityId, limit })
-      : this.all<Record<string, unknown>>(`SELECT * FROM decisions WHERE status = 'active' ORDER BY updated_at DESC LIMIT :limit`, { limit })
+      ? this.all<Record<string, unknown>>(`SELECT * FROM decisions WHERE status = 'active' AND valid_until IS NULL AND (scope_entity_id = :scope_entity_id OR scope_entity_id IS NULL) ORDER BY updated_at DESC LIMIT :limit`, { scope_entity_id: scopeEntityId, limit })
+      : this.all<Record<string, unknown>>(`SELECT * FROM decisions WHERE status = 'active' AND valid_until IS NULL ORDER BY updated_at DESC LIMIT :limit`, { limit })
     ).map(mapDecision);
   }
 
   listActivePreferences(limit = 5, subjectRef?: string): readonly TruthPreferenceRecord[] {
     return (subjectRef
-      ? this.all<Record<string, unknown>>(`SELECT * FROM preferences WHERE status = 'active' AND (subject_ref = :subject_ref OR subject_ref IS NULL) ORDER BY updated_at DESC LIMIT :limit`, { subject_ref: subjectRef, limit })
-      : this.all<Record<string, unknown>>(`SELECT * FROM preferences WHERE status = 'active' ORDER BY updated_at DESC LIMIT :limit`, { limit })
+      ? this.all<Record<string, unknown>>(`SELECT * FROM preferences WHERE status = 'active' AND valid_until IS NULL AND (subject_ref = :subject_ref OR subject_ref IS NULL) ORDER BY updated_at DESC LIMIT :limit`, { subject_ref: subjectRef, limit })
+      : this.all<Record<string, unknown>>(`SELECT * FROM preferences WHERE status = 'active' AND valid_until IS NULL ORDER BY updated_at DESC LIMIT :limit`, { limit })
     ).map(mapPreference);
   }
 
   listActivePromotedMemories(limit = 5, subjectEntityId?: string): readonly TruthPromotedMemoryRecord[] {
     return (subjectEntityId
-      ? this.all<Record<string, unknown>>(`SELECT * FROM promoted_memories WHERE status = 'active' AND (subject_entity_id = :subject_entity_id OR subject_entity_id IS NULL) ORDER BY updated_at DESC LIMIT :limit`, { subject_entity_id: subjectEntityId, limit })
-      : this.all<Record<string, unknown>>(`SELECT * FROM promoted_memories WHERE status = 'active' ORDER BY updated_at DESC LIMIT :limit`, { limit })
+      ? this.all<Record<string, unknown>>(`SELECT * FROM promoted_memories WHERE status = 'active' AND valid_until IS NULL AND (subject_entity_id = :subject_entity_id OR subject_entity_id IS NULL) ORDER BY updated_at DESC LIMIT :limit`, { subject_entity_id: subjectEntityId, limit })
+      : this.all<Record<string, unknown>>(`SELECT * FROM promoted_memories WHERE status = 'active' AND valid_until IS NULL ORDER BY updated_at DESC LIMIT :limit`, { limit })
     ).map(mapPromotedMemory);
+  }
+
+  /**
+   * Supersede an entity: sets valid_until on the old record and marks it superseded.
+   */
+  supersedeEntity(entityId: string, newEntityId: string): void {
+    const ts = nowIso();
+    this.run(
+      `UPDATE entities SET status = 'superseded', valid_until = :ts, updated_at = :ts WHERE entity_id = :entity_id`,
+      { entity_id: entityId, ts },
+    );
+    // Also update the FTS index for the old entity
+    this.upsertWaypathFtsEntry('entities', entityId, 'entity', 'superseded', entityId, entityId);
+    // Link the old to new via the entity's state_json
+    const old = this.getEntity(entityId);
+    if (old) {
+      const state = JSON.parse(old.state_json || '{}');
+      state.superseded_by = newEntityId;
+      this.run(`UPDATE entities SET state_json = :state_json WHERE entity_id = :entity_id`, {
+        entity_id: entityId,
+        state_json: JSON.stringify(state),
+      });
+    }
+  }
+
+  /**
+   * Supersede a decision: sets valid_until on the old record.
+   */
+  supersedeDecision(decisionId: string, newDecisionId: string): void {
+    const ts = nowIso();
+    this.run(
+      `UPDATE decisions SET status = 'superseded', valid_until = :ts, superseded_by = :new_id, updated_at = :ts WHERE decision_id = :decision_id`,
+      { decision_id: decisionId, new_id: newDecisionId, ts },
+    );
+  }
+
+  /**
+   * List full history of an entity across all statuses (active, superseded, inactive).
+   * Returns all versions ordered by valid_from DESC.
+   */
+  listEntityHistory(entityId: string, limit = 20): readonly TruthEntityRecord[] {
+    // First check if this entity has a supersede chain via state_json
+    const rows = this.all<Record<string, unknown>>(
+      `SELECT * FROM entities WHERE entity_id = :entity_id ORDER BY valid_from DESC LIMIT :limit`,
+      { entity_id: entityId, limit },
+    );
+    if (rows.length > 0) return rows.map(mapEntity);
+    // If no exact match, search for entities with same name (name-based history)
+    return [];
+  }
+
+  /**
+   * List all versions of records sharing a name prefix for temporal history.
+   * Useful for tracking entity evolution across supersede chains.
+   */
+  listEntityHistoryByName(name: string, limit = 20): readonly TruthEntityRecord[] {
+    return this.all<Record<string, unknown>>(
+      `SELECT * FROM entities WHERE name = :name ORDER BY valid_from DESC, updated_at DESC LIMIT :limit`,
+      { name, limit },
+    ).map(mapEntity);
+  }
+
+  /**
+   * List decision history by scope or specific ID.
+   */
+  listDecisionHistory(decisionId: string, limit = 20): readonly TruthDecisionRecord[] {
+    const rows: TruthDecisionRecord[] = [];
+    let currentId: string | null = decisionId;
+    const visited = new Set<string>();
+
+    while (currentId && rows.length < limit && !visited.has(currentId)) {
+      visited.add(currentId);
+      const record = this.getDecision(currentId);
+      if (!record) break;
+      rows.push(record);
+      // Follow superseded_by chain forward
+      if (record.superseded_by) {
+        currentId = record.superseded_by;
+      } else {
+        break;
+      }
+    }
+
+    // Also look backwards: find decisions that superseded_by = decisionId
+    const predecessors = this.all<Record<string, unknown>>(
+      `SELECT * FROM decisions WHERE superseded_by = :id ORDER BY valid_from DESC LIMIT :limit`,
+      { id: decisionId, limit },
+    ).map(mapDecision);
+
+    for (const pred of predecessors) {
+      if (!visited.has(pred.decision_id)) {
+        rows.unshift(pred);
+        visited.add(pred.decision_id);
+      }
+    }
+
+    return rows;
   }
 
   listOpenPreferenceContradictions(limit = 8, scopeRef?: string): readonly string[] {
@@ -679,9 +819,17 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     );
   }
 
-  countTable(tableName: 'entities' | 'relationships' | 'decisions' | 'preferences' | 'promoted_memories' | 'knowledge_pages' | 'promotion_candidates' | 'evidence_bundles'): number {
+  countTable(tableName: 'schema_meta' | 'provenance_records' | 'entities' | 'relationships' | 'decisions' | 'preferences' | 'promoted_memories' | 'claims' | 'promotion_candidates' | 'knowledge_pages' | 'evidence_bundles' | 'waypath_fts'): number {
     const row = this.get<{ count: number }>(`SELECT COUNT(*) as count FROM ${tableName}`);
     return row?.count ?? 0;
+  }
+
+  getSchemaMetaVersionPublic(schemaName: string): number | null {
+    return this.getSchemaMetaVersion(schemaName);
+  }
+
+  setSchemaMetaVersionPublic(schemaName: string, schemaVersion: number): void {
+    this.setSchemaMetaVersion(schemaName, schemaVersion);
   }
 
   private upsertWaypathFtsEntry(
@@ -710,7 +858,7 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     );
   }
 
-  private rebuildWaypathFts(): void {
+  rebuildWaypathFts(): void {
     this.db.exec(`DELETE FROM waypath_fts`);
     this.db.exec(
       `INSERT INTO waypath_fts (source_table, source_id, source_type, status, title, content)
