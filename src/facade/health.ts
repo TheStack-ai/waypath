@@ -199,27 +199,17 @@ export function healthCheck(store: SqliteTruthKernelStorage, options: HealthChec
     expected_rows: expectedRows,
     missing_rows: Math.max(expectedRows - indexedRows, 0),
   };
-  const expiredButActive = (
-    store.get<{ count: number }>(
-      `SELECT COUNT(*) AS count FROM entities WHERE valid_until < datetime('now') AND status = 'active'`,
-    )?.count ?? 0
-  ) + (
-    store.get<{ count: number }>(
-      `SELECT COUNT(*) AS count FROM decisions WHERE valid_until < datetime('now') AND status = 'active'`,
-    )?.count ?? 0
-  ) + (
-    store.get<{ count: number }>(
-      `SELECT COUNT(*) AS count FROM preferences WHERE valid_until < datetime('now') AND status = 'active'`,
-    )?.count ?? 0
-  ) + (
-    store.get<{ count: number }>(
-      `SELECT COUNT(*) AS count FROM relationships WHERE valid_until < datetime('now') AND status = 'active'`,
-    )?.count ?? 0
-  ) + (
-    store.get<{ count: number }>(
-      `SELECT COUNT(*) AS count FROM promoted_memories WHERE valid_until < datetime('now') AND status = 'active'`,
-    )?.count ?? 0
-  );
+  // valid_until is stored as ISO 8601 (e.g. '2026-04-16T10:30:00.000Z').
+  // Pass current time in same format for correct string comparison.
+  const nowIsoStr = new Date().toISOString();
+  const tables = ['entities', 'decisions', 'preferences', 'relationships', 'promoted_memories'] as const;
+  let expiredButActive = 0;
+  for (const table of tables) {
+    expiredButActive += store.get<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM ${table} WHERE valid_until IS NOT NULL AND valid_until < :now AND status = 'active'`,
+      { now: nowIsoStr },
+    )?.count ?? 0;
+  }
   const temporalCoherence = {
     expired_but_active: expiredButActive,
     warning: expiredButActive > 0

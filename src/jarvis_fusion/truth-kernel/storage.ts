@@ -272,13 +272,29 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
     if (this.getSchemaMetaVersion('fk_version') !== 1) {
       this.db.exec('BEGIN IMMEDIATE');
       try {
+        // Preflight: clean orphan references that would violate FK constraints.
+        // Pre-v4 createPromotionCandidate wrote claim_id = candidate_id without a claims row.
+        this.db.exec(`INSERT OR IGNORE INTO claims (claim_id, claim_type, claim_text, status, created_at, updated_at)
+          SELECT pc.claim_id, 'legacy', 'auto-created for FK migration', 'active', pc.created_at, pc.updated_at
+          FROM promotion_candidates pc WHERE pc.claim_id NOT IN (SELECT claim_id FROM claims)`);
+        // Remove relationships referencing non-existent entities
+        this.db.exec(`DELETE FROM relationships WHERE from_entity_id NOT IN (SELECT entity_id FROM entities)
+          OR to_entity_id NOT IN (SELECT entity_id FROM entities)`);
+        // Nullify dangling provenance references
+        this.db.exec(`UPDATE relationships SET provenance_id = NULL WHERE provenance_id IS NOT NULL AND provenance_id NOT IN (SELECT provenance_id FROM provenance_records)`);
+        this.db.exec(`UPDATE decisions SET provenance_id = NULL WHERE provenance_id IS NOT NULL AND provenance_id NOT IN (SELECT provenance_id FROM provenance_records)`);
+        this.db.exec(`UPDATE decisions SET scope_entity_id = NULL WHERE scope_entity_id IS NOT NULL AND scope_entity_id NOT IN (SELECT entity_id FROM entities)`);
+        this.db.exec(`UPDATE preferences SET provenance_id = NULL WHERE provenance_id IS NOT NULL AND provenance_id NOT IN (SELECT provenance_id FROM provenance_records)`);
+        this.db.exec(`UPDATE promoted_memories SET provenance_id = NULL WHERE provenance_id IS NOT NULL AND provenance_id NOT IN (SELECT provenance_id FROM provenance_records)`);
+        this.db.exec(`UPDATE promoted_memories SET subject_entity_id = NULL WHERE subject_entity_id IS NOT NULL AND subject_entity_id NOT IN (SELECT entity_id FROM entities)`);
+
         this.db.exec(TRUTH_KERNEL_V4_FK_MIGRATION);
+        this.setSchemaMetaVersion('fk_version', 1);
         this.db.exec('COMMIT');
       } catch (error) {
         this.db.exec('ROLLBACK');
         throw error;
       }
-      this.setSchemaMetaVersion('fk_version', 1);
     }
     if (this.getSchemaMetaVersion(WAYPATH_FTS_SCHEMA_NAME) !== WAYPATH_FTS_SCHEMA_VERSION) {
       this.rebuildWaypathFts();
@@ -712,44 +728,46 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
    * List decision history by scope or specific ID.
    */
   listDecisionHistory(decisionId: string, limit = 20): readonly TruthDecisionRecord[] {
-    // Walk backward: find predecessors whose superseded_by points into the chain
+    // Walk backward: find predecessors whose superseded_by points into the chain.
+    // Depth guard prevents infinite recursion on cycles (cap at limit).
     const backwardRows = this.all<Record<string, unknown>>(
-      `WITH RECURSIVE back_chain(decision_id) AS (
-        SELECT decision_id FROM decisions WHERE decision_id = :id
+      `WITH RECURSIVE back_chain(decision_id, depth) AS (
+        SELECT decision_id, 0 FROM decisions WHERE decision_id = :id
         UNION ALL
-        SELECT d.decision_id FROM decisions d JOIN back_chain c ON d.superseded_by = c.decision_id
+        SELECT d.decision_id, c.depth + 1
+          FROM decisions d JOIN back_chain c ON d.superseded_by = c.decision_id
+          WHERE c.depth < :limit
       )
-      SELECT d.* FROM decisions d JOIN back_chain c ON d.decision_id = c.decision_id ORDER BY d.valid_from ASC LIMIT :limit`,
+      SELECT d.* FROM decisions d JOIN back_chain c ON d.decision_id = c.decision_id
+      ORDER BY d.valid_from ASC LIMIT :limit`,
       { id: decisionId, limit },
     ).map(mapDecision);
 
-    // Walk forward: follow the superseded_by field from the starting decision
+    // Walk forward: follow the superseded_by field from the starting decision.
     const forwardRows = this.all<Record<string, unknown>>(
-      `WITH RECURSIVE fwd_chain(decision_id) AS (
-        SELECT decision_id FROM decisions WHERE decision_id = :id
+      `WITH RECURSIVE fwd_chain(decision_id, depth) AS (
+        SELECT decision_id, 0 FROM decisions WHERE decision_id = :id
         UNION ALL
-        SELECT d.decision_id FROM decisions d JOIN fwd_chain c ON d.decision_id = (SELECT superseded_by FROM decisions WHERE decision_id = c.decision_id)
-        WHERE d.decision_id IS NOT NULL
+        SELECT d2.decision_id, c.depth + 1
+          FROM decisions d1
+          JOIN fwd_chain c ON d1.decision_id = c.decision_id
+          JOIN decisions d2 ON d2.decision_id = d1.superseded_by
+          WHERE d1.superseded_by IS NOT NULL AND c.depth < :limit
       )
-      SELECT d.* FROM decisions d JOIN fwd_chain c ON d.decision_id = c.decision_id ORDER BY d.valid_from ASC LIMIT :limit`,
+      SELECT d.* FROM decisions d JOIN fwd_chain c ON d.decision_id = c.decision_id
+      ORDER BY d.valid_from ASC LIMIT :limit`,
       { id: decisionId, limit },
     ).map(mapDecision);
 
-    // Merge and deduplicate, ordered by valid_from ASC (oldest first)
+    // Merge, deduplicate, and enforce global limit
     const visited = new Set<string>();
     const result: TruthDecisionRecord[] = [];
 
-    for (const row of backwardRows) {
-      if (!visited.has(row.decision_id)) {
-        visited.add(row.decision_id);
-        result.push(row);
-      }
-    }
-    for (const row of forwardRows) {
-      if (!visited.has(row.decision_id)) {
-        visited.add(row.decision_id);
-        result.push(row);
-      }
+    for (const row of [...backwardRows, ...forwardRows]) {
+      if (visited.has(row.decision_id)) continue;
+      visited.add(row.decision_id);
+      result.push(row);
+      if (result.length >= limit) break;
     }
 
     return result;

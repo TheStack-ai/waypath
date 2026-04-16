@@ -1,4 +1,5 @@
 import type { RecallWeightOverrides, SourceKind, SourceSystem } from '../../contracts/index.js';
+import { matchesWordBoundary } from '../../shared/text.js';
 
 export interface RetrievalCandidate {
   readonly title?: string;
@@ -113,11 +114,6 @@ function sourceKindWeight(
   return sourceKind
     ? profile?.unknownSourceKindWeight ?? 0.45
     : profile?.missingSourceKindWeight ?? 0.25;
-}
-
-function matchesWordBoundary(haystack: string, token: string): boolean {
-  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?:^|\\W)${escaped}(?:\\W|$)`, 'i').test(haystack);
 }
 
 function lexicalScore(candidate: RetrievalCandidate, tokens: readonly string[]): number {

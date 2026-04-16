@@ -28,7 +28,7 @@ import type { SearchCandidate, ScoredResult, SearchOptions } from './types.js';
 import type { RankedList } from './rrf.js';
 import { rrfFusion } from './rrf.js';
 import { dedupResults } from './dedup.js';
-import { tokenize } from '../../shared/text.js';
+import { tokenize, matchesWordBoundary } from '../../shared/text.js';
 
 export interface SearchPipelineOptions {
   readonly store: SqliteTruthKernelStorage;
@@ -91,14 +91,17 @@ export function queryTruthDirect(
   const ftsKeywordScores = new Map<string, number>();
   const ftsHits = store.searchWaypathFts(normalizedQuery, Math.max(candidates.length * 2, 40));
   if (ftsHits.length > 0) {
-    const ranks = ftsHits.map((h) => Math.abs(h.rank)); // FTS5 rank is negative
-    const minRank = Math.min(...ranks);
-    const maxRank = Math.max(...ranks);
-    const range = maxRank - minRank || 1; // avoid division by zero
+    // FTS5 BM25 rank: more negative = better match (e.g., -1.42e-06 beats -1.19e-06).
+    // We normalize so that the best (most negative) rank maps to 1.0.
+    const rawRanks = ftsHits.map((h) => h.rank);
+    const minRaw = Math.min(...rawRanks); // most negative = best match
+    const maxRaw = Math.max(...rawRanks); // least negative = weakest match
+    const range = maxRaw - minRaw || 1;
     for (let i = 0; i < ftsHits.length; i++) {
       const hit = ftsHits[i];
       if (!hit) continue;
-      const normalized = 1 - (Math.abs(hit.rank) - minRank) / range; // higher = better
+      // best (most negative) → 1.0, worst (least negative) → 0.01
+      const normalized = (maxRaw - hit.rank) / range;
       ftsKeywordScores.set(hit.source_id, Math.max(0.01, normalized));
     }
   }
@@ -624,11 +627,6 @@ function loadTruthDirectCandidates(
   }
 
   return candidates;
-}
-
-function matchesWordBoundary(haystack: string, token: string): boolean {
-  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?:^|\\W)${escaped}(?:\\W|$)`, 'i').test(haystack);
 }
 
 function minDefined(...values: (number | undefined)[]): number | undefined {

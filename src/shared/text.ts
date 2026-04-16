@@ -20,6 +20,18 @@ export function uniqueStrings(values: readonly string[]): string[] {
   return [...new Set(values.map((v) => v.trim()).filter((v) => v.length > 0))];
 }
 
+const wordBoundaryCache = new Map<string, RegExp>();
+
+export function matchesWordBoundary(haystack: string, token: string): boolean {
+  let re = wordBoundaryCache.get(token);
+  if (!re) {
+    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    re = new RegExp(`(?:^|\\W)${escaped}(?:\\W|$)`, 'i');
+    wordBoundaryCache.set(token, re);
+  }
+  return re.test(haystack);
+}
+
 export function bulletSection(title: string, items: readonly string[]): string[] {
   return [
     `## ${title}`,
