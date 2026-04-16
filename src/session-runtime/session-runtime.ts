@@ -1,5 +1,6 @@
 import {
   type ContradictionItem,
+  type ModelTier,
   type RecallWeightOverrides,
   type ReviewQueueItem,
   type SessionContextPack,
@@ -24,6 +25,13 @@ import type {
   TruthPreferenceRecord,
   TruthPromotedMemoryRecord,
 } from '../jarvis_fusion/contracts.js';
+import {
+  computeFreshness,
+  selectMemories,
+  formatSelectionResult,
+  type BudgetCandidate,
+  type MemoryType,
+} from '../shared/token-budget/index.js';
 
 const DEFAULT_FOCUS = {
   project: '',
@@ -632,6 +640,110 @@ function buildJcpRuntimeContext(
   };
 }
 
+function entityToMemoryType(entityType: string): MemoryType {
+  if (entityType === 'person') return 'profile';
+  if (entityType === 'project' || entityType === 'system' || entityType === 'tool') return 'durable-fact';
+  return 'durable-fact';
+}
+
+function promotedMemoryToMemoryType(accessTier: string): MemoryType {
+  if (accessTier === 'self') return 'profile';
+  if (accessTier === 'ops') return 'task-state';
+  if (accessTier === 'notes') return 'ephemeral';
+  return 'task-state';
+}
+
+function hoursOld(updatedAt: string | undefined): number {
+  if (!updatedAt) return 0;
+  const diff = Date.now() - new Date(updatedAt).getTime();
+  return Math.max(0, diff / (1000 * 60 * 60));
+}
+
+function normalizeScore(score: number, maxScore: number): number {
+  if (maxScore <= 0) return 0;
+  return Math.min(1, Math.max(0, score / maxScore));
+}
+
+function toBudgetCandidates(
+  rankedEntities: readonly TruthEntityRecord[],
+  rankedDecisions: readonly TruthDecisionRecord[],
+  rankedPreferences: readonly TruthPreferenceRecord[],
+  rankedPromotedMemories: readonly TruthPromotedMemoryRecord[],
+  entityScores: ReadonlyMap<string, number>,
+): BudgetCandidate[] {
+  const maxEntityScore = Math.max(1, ...Array.from(entityScores.values()));
+  const candidates: BudgetCandidate[] = [];
+
+  for (const entity of rankedEntities) {
+    const memType = entityToMemoryType(entity.entity_type);
+    const age = hoursOld(entity.updated_at);
+    candidates.push({
+      id: entity.entity_id,
+      content: `${entity.name}: ${entity.summary}`,
+      memoryType: memType,
+      relevanceScore: normalizeScore(entityScores.get(entity.entity_id) ?? 0, maxEntityScore),
+      freshnessScore: computeFreshness(memType, age),
+      importanceScore: entity.entity_type === 'project' ? 0.9 : 0.5,
+      accessFrequency: 0.5,
+      updatedAt: entity.updated_at,
+    });
+  }
+
+  for (const decision of rankedDecisions) {
+    const age = hoursOld(decision.updated_at);
+    candidates.push({
+      id: decision.decision_id,
+      content: `${decision.title}: ${decision.statement}`,
+      memoryType: 'durable-fact',
+      relevanceScore: normalizeScore(
+        decision.scope_entity_id ? entityScores.get(decision.scope_entity_id) ?? 0 : 0,
+        maxEntityScore,
+      ),
+      freshnessScore: computeFreshness('durable-fact', age),
+      importanceScore: 0.7,
+      accessFrequency: 0.5,
+      updatedAt: decision.updated_at,
+    });
+  }
+
+  for (const pref of rankedPreferences) {
+    const age = hoursOld(pref.updated_at);
+    candidates.push({
+      id: pref.preference_id,
+      content: `${pref.key}=${pref.value}`,
+      memoryType: 'preferences',
+      relevanceScore: normalizeScore(
+        pref.subject_ref ? entityScores.get(pref.subject_ref) ?? 0 : 0,
+        maxEntityScore,
+      ),
+      freshnessScore: computeFreshness('preferences', age),
+      importanceScore: pref.strength === 'high' ? 0.8 : pref.strength === 'medium' ? 0.5 : 0.3,
+      accessFrequency: 0.4,
+      updatedAt: pref.updated_at,
+    });
+  }
+
+  for (const memory of rankedPromotedMemories) {
+    const memType = promotedMemoryToMemoryType(memory.access_tier);
+    const age = hoursOld(memory.updated_at);
+    candidates.push({
+      id: memory.memory_id,
+      content: `${memory.summary}: ${memory.content}`,
+      memoryType: memType,
+      relevanceScore: normalizeScore(
+        memory.subject_entity_id ? entityScores.get(memory.subject_entity_id) ?? 0 : 0,
+        maxEntityScore,
+      ),
+      freshnessScore: computeFreshness(memType, age),
+      importanceScore: 0.5,
+      accessFrequency: 0.4,
+      updatedAt: memory.updated_at,
+    });
+  }
+
+  return candidates;
+}
+
 export function createSessionRuntime(options: SessionRuntimeOptions = {}): SessionRuntime {
   const store = options.store ?? createTruthKernelStorage(options.storePath ?? defaultTruthKernelStoreLocation());
   const reviewQueueLimit = options.reviewQueueLimit ?? 8;
@@ -727,6 +839,32 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
         retrievalStrategy,
       );
 
+      // --- Token-budget-aware selection ---
+      const modelTier = input.modelTier ?? 'opus-1m';
+      const budgetCandidates = toBudgetCandidates(
+        rankedEntities,
+        allDecisions,
+        rankedPreferences,
+        rankedPromotedMemories,
+        entityScores,
+      );
+      const budgetResult = selectMemories(budgetCandidates, modelTier);
+      const selectedIds = new Set(budgetResult.selected.map((s) => s.candidate.id));
+
+      // Filter ranked items to only those selected by budget
+      const budgetedEntities = rankedEntities.filter((e) => selectedIds.has(e.entity_id));
+      const budgetedDecisions = allDecisions.filter((d) => selectedIds.has(d.decision_id));
+      const budgetedPreferences = rankedPreferences.filter((p) => selectedIds.has(p.preference_id));
+      const budgetedMemories = rankedPromotedMemories.filter((m) => selectedIds.has(m.memory_id));
+
+      // Log diagnostics (debug-level, non-blocking)
+      const budgetDiagnostics = formatSelectionResult(budgetResult);
+      if (budgetDiagnostics.excludedCount > 0) {
+        console.debug(
+          `[waypath] token-budget: selected ${budgetDiagnostics.selectedCount}/${budgetDiagnostics.selectedCount + budgetDiagnostics.excludedCount} candidates, ${budgetDiagnostics.totalTokens}/${budgetDiagnostics.budgetLimit} tokens (model=${modelTier})`,
+        );
+      }
+
       // Build related_pages from store — graph-expanded entity matching + project scope
       const sessionBriefId = `page:session:${project}`;
       const graphEntityIdSet = new Set([
@@ -771,10 +909,10 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
           activeTask,
         },
         truth_highlights: {
-          decisions: uniqueStrings(allDecisions.slice(0, 6).map((decision) => decision.title)),
-          preferences: rankedPreferences.slice(0, 6).map((preference) => `${preference.key}=${preference.value}`),
-          entities: uniqueStrings(relatedEntityNames.slice(0, 8)),
-          promoted_memories: rankedPromotedMemories.slice(0, 6).map((memory) => memory.summary),
+          decisions: uniqueStrings(budgetedDecisions.map((decision) => decision.title)),
+          preferences: budgetedPreferences.map((preference) => `${preference.key}=${preference.value}`),
+          entities: uniqueStrings(budgetedEntities.map((entity) => entity.name)),
+          promoted_memories: budgetedMemories.map((memory) => memory.summary),
         },
         jcp_context: {
           enabled: jcpRuntimeContext.enabled,
@@ -785,13 +923,13 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
           seed_entities:
             seedEntities.length > 0
               ? seedEntities
-              : uniqueStrings([projectEntityId, ...rankedEntities.slice(0, 4).map((entity) => entity.entity_id)]),
+              : uniqueStrings([projectEntityId, ...budgetedEntities.slice(0, 4).map((entity) => entity.entity_id)]),
           related_entities: relatedEntityIds.slice(0, 12),
           relationships: graphRelationships.slice(0, 12),
         },
         recent_changes: {
-          recent_promotions: rankedPromotedMemories.map((memory) => memory.memory_id),
-          superseded: rankedDecisions
+          recent_promotions: budgetedMemories.map((memory) => memory.memory_id),
+          superseded: budgetedDecisions
             .filter((decision) => decision.superseded_by !== null)
             .map((decision) => decision.decision_id),
           open_contradictions: [...store.listOpenPreferenceContradictions(reviewQueueLimit, projectEntityId)],

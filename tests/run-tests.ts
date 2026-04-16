@@ -135,6 +135,24 @@ import {
   testExportAgentsMdContainsCodingRules,
   testExportEmptyStoreReturnsValidMarkdown,
 } from './unit/export.test';
+import {
+  testEstimateTokensCharDiv4RoundedUp,
+  testComputeFreshnessNeverDecaysForProfileAndDurableFact,
+  testComputeFreshnessDecaysForTaskState,
+  testComputeFreshnessNearZeroForEphemeralAfterManyHours,
+  testScoreCandidateCombinesSignals,
+  testScoreCandidateClampsInputs,
+  testScoreCandidateDensityIsScorePerToken,
+  testAllCandidatesFitSaturationGap,
+  testBudgetExceededDensityGreedy,
+  testTypeBudgetLimits,
+  testEmptyCandidatesEmptyResult,
+  testSingleCandideLargerThanBudgetExcluded,
+  testModelTierAffectsBudgetSize,
+  testFormatScoreBreakdownIncludesAllComponents,
+  testFormatSelectionResultIncludesBudgetStats,
+  testToJsonDiagnosticsReturnsSerializable,
+} from './unit/token-budget.test';
 
 interface TestCase {
   name: string;
@@ -260,6 +278,23 @@ const tests: TestCase[] = [
   { name: 'scan: updates last_scan_at', run: testScanUpdatesLastScanAt },
   { name: 'scan: no auto-promote', run: testScanNoAutoPromote },
   { name: 'scan: multiple directories', run: testScanMultipleDirectories },
+  // Token Budget
+  { name: 'token-budget: estimateTokens char/4 rounded up', run: testEstimateTokensCharDiv4RoundedUp },
+  { name: 'token-budget: freshness no decay for profile/durable-fact', run: testComputeFreshnessNeverDecaysForProfileAndDurableFact },
+  { name: 'token-budget: freshness decays for task-state', run: testComputeFreshnessDecaysForTaskState },
+  { name: 'token-budget: freshness near-zero for ephemeral', run: testComputeFreshnessNearZeroForEphemeralAfterManyHours },
+  { name: 'token-budget: scoreCandidate combines signals', run: testScoreCandidateCombinesSignals },
+  { name: 'token-budget: scoreCandidate clamps inputs', run: testScoreCandidateClampsInputs },
+  { name: 'token-budget: density = score / tokens', run: testScoreCandidateDensityIsScorePerToken },
+  { name: 'token-budget: all fit saturation gap', run: testAllCandidatesFitSaturationGap },
+  { name: 'token-budget: budget exceeded density greedy', run: testBudgetExceededDensityGreedy },
+  { name: 'token-budget: type budget limits', run: testTypeBudgetLimits },
+  { name: 'token-budget: empty candidates', run: testEmptyCandidatesEmptyResult },
+  { name: 'token-budget: single oversized excluded', run: testSingleCandideLargerThanBudgetExcluded },
+  { name: 'token-budget: model tier affects budget', run: testModelTierAffectsBudgetSize },
+  { name: 'token-budget: formatScoreBreakdown', run: testFormatScoreBreakdownIncludesAllComponents },
+  { name: 'token-budget: formatSelectionResult', run: testFormatSelectionResultIncludesBudgetStats },
+  { name: 'token-budget: toJsonDiagnostics serializable', run: testToJsonDiagnosticsReturnsSerializable },
 ];
 
 async function main(): Promise<void> {

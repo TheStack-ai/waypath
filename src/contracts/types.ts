@@ -417,11 +417,14 @@ export interface FacadeDescription {
   session_runtime: 'local-first';
 }
 
+export type ModelTier = 'opus-1m' | 'opus' | 'sonnet' | 'haiku';
+
 export interface SessionStartInput {
   project?: string | undefined;
   objective?: string | undefined;
   activeTask?: string | undefined;
   seedEntities?: string[] | undefined;
+  modelTier?: ModelTier | undefined;
 }
 
 export interface SessionStartResult {
