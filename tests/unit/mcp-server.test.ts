@@ -92,7 +92,7 @@ export async function runMcpServerUnitTest(): Promise<void> {
   assertEqual(((messages[0]?.result as Record<string, unknown>)?.protocolVersion as string), '2025-11-25');
 
   const tools = ((messages[1]?.result as Record<string, unknown>)?.tools as { name: string }[]);
-  assertEqual(tools.length, 9);
+  assertEqual(tools.length, 11);
   assert(tools.some((tool) => tool.name === 'waypath_health'), 'expected waypath_health tool');
 
   const toolCallResult = (messages[2]?.result as Record<string, unknown>)?.structuredContent as Record<string, unknown>;

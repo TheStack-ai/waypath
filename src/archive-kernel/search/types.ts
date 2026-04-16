@@ -69,4 +69,6 @@ export interface DedupConfig {
   readonly maxTypeRatio?: number;
   /** Max results per unique entity/page (default 2) */
   readonly maxPerSource?: number;
+  /** Original result count before dedup — used for Layer 3 maxPerType calculation */
+  readonly originalCount?: number;
 }

@@ -116,7 +116,7 @@ function scanJcpChanges(
   let jcpDb;
   try {
     const { DatabaseSync } = require('node:sqlite') as typeof import('node:sqlite');
-    jcpDb = new DatabaseSync(jcpDbPath, { open: true });
+    jcpDb = new DatabaseSync(jcpDbPath, { readOnly: true });
   } catch {
     return [];
   }

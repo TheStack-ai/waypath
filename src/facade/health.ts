@@ -199,6 +199,33 @@ export function healthCheck(store: SqliteTruthKernelStorage, options: HealthChec
     expected_rows: expectedRows,
     missing_rows: Math.max(expectedRows - indexedRows, 0),
   };
+  const expiredButActive = (
+    store.get<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM entities WHERE valid_until < datetime('now') AND status = 'active'`,
+    )?.count ?? 0
+  ) + (
+    store.get<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM decisions WHERE valid_until < datetime('now') AND status = 'active'`,
+    )?.count ?? 0
+  ) + (
+    store.get<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM preferences WHERE valid_until < datetime('now') AND status = 'active'`,
+    )?.count ?? 0
+  ) + (
+    store.get<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM relationships WHERE valid_until < datetime('now') AND status = 'active'`,
+    )?.count ?? 0
+  ) + (
+    store.get<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM promoted_memories WHERE valid_until < datetime('now') AND status = 'active'`,
+    )?.count ?? 0
+  );
+  const temporalCoherence = {
+    expired_but_active: expiredButActive,
+    warning: expiredButActive > 0
+      ? `${expiredButActive} records have valid_until in the past but are still active`
+      : null,
+  };
   const stalePages = store.get<{ count: number }>(
     `SELECT COUNT(*) AS count FROM knowledge_pages WHERE status = 'stale'`,
   )?.count ?? 0;
@@ -218,6 +245,7 @@ export function healthCheck(store: SqliteTruthKernelStorage, options: HealthChec
     fts_sync: ftsSync,
     stale_pages: stalePages,
     pending_reviews: pendingReviews,
+    temporal_coherence: temporalCoherence,
     jcp_status: jcpStatus,
     mempalace_status: mempalaceStatus,
     db_size_bytes: dbFileSizeBytes(store.location),

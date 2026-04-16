@@ -38,6 +38,23 @@ export function runBootstrapImport(store: SqliteTruthKernelStorage, manifest: Bo
   let importedCandidates = 0;
   const importedAt = nowIso();
 
+  // Ensure the project entity exists so that FK-constrained relationships
+  // referencing project:<project> won't fail (readers may create such links).
+  const projectEntityId = `project:${project}`;
+  if (!store.getEntity(projectEntityId)) {
+    store.upsertEntity({
+      entity_id: projectEntityId,
+      entity_type: 'project',
+      name: project,
+      summary: `Project workspace for ${project}.`,
+      state_json: JSON.stringify({ imported: true }),
+      status: 'active',
+      canonical_page_id: null,
+      created_at: importedAt,
+      updated_at: importedAt,
+    });
+  }
+
   for (const reader of readers) {
     const snapshot = reader.load();
     store.transaction(() => {

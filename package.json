@@ -1,7 +1,7 @@
 {
   "name": "waypath",
   "version": "0.1.0-rc.0",
-  "description": "Local-first external brain CLI for Waypath host shims and truth workflows.",
+  "description": "Local-first external brain for coding agents and solo developers.",
   "type": "module",
   "main": "dist/src/index.js",
   "files": [

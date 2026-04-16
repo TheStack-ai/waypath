@@ -272,14 +272,14 @@ export function testListDecisionHistory(): void {
 }
 
 /**
- * Test: schema_meta version is 3 after migration.
+ * Test: schema_meta version is 4 after migration.
  */
 export function testSchemaVersion3(): void {
   const root = mkdtempSync(`${tmpdir()}/waypath-temporal-schema-`);
   const store = createTruthKernelStorage(`${root}/truth.db`);
 
   const version = store.getSchemaMetaVersionPublic('truth_kernel');
-  assertEqual(version, 3);
+  assertEqual(version, 4);
 
   const temporalVersion = store.getSchemaMetaVersionPublic('temporal_version');
   assertEqual(temporalVersion, 1);

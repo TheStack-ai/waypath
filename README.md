@@ -1,6 +1,6 @@
 # Waypath
 
-이 repository는 처음에는 planning workspace로 시작했지만, 현재는 **터미널에서 설치해서 바로 쓸 수 있는 `waypath` v1-core release candidate**까지 구현된 상태입니다.
+Local-first knowledge engine for coding agents and solo developers.
 
 현재 기준 핵심 상태:
 
@@ -13,13 +13,15 @@
 
 ---
 
+## Requirements
+
+- **Node.js >= 22** required
+- **Node.js >= 22.5** recommended — enables the native `node:sqlite` module (used automatically when available)
+- **`better-sqlite3`** used as fallback on Node 22.0–22.4 or environments where native sqlite is unavailable
+
 ## Quick install (local tarball)
 
 > 현재는 registry publish 전 단계이므로, **로컬 tarball install**을 기준으로 사용합니다.
-
-필수 조건:
-
-- Node **25+** (`node:sqlite` 사용)
 
 설치:
 

@@ -30,8 +30,8 @@ export function dedupResults(
   // Layer 2: By text similarity (Jaccard on word sets)
   deduped = dedupByTextSimilarity(deduped, threshold);
 
-  // Layer 3: By type diversity
-  deduped = enforceTypeDiversity(deduped, maxRatio);
+  // Layer 3: By type diversity (use original count to avoid over-capping after Layer 1-2 reduction)
+  deduped = enforceTypeDiversity(deduped, maxRatio, config?.originalCount ?? results.length);
 
   // Layer 4: By source cap
   deduped = capPerSource(deduped, maxPerSource);
@@ -88,8 +88,8 @@ function dedupByTextSimilarity(results: ScoredResult[], threshold: number): Scor
  * Layer 3: No source_type exceeds maxRatio of total results.
  * Prevents entity-heavy or decision-heavy result flooding.
  */
-function enforceTypeDiversity(results: ScoredResult[], maxRatio: number): ScoredResult[] {
-  const maxPerType = Math.max(1, Math.ceil(results.length * maxRatio));
+function enforceTypeDiversity(results: ScoredResult[], maxRatio: number, originalCount: number): ScoredResult[] {
+  const maxPerType = Math.max(1, Math.ceil(originalCount * maxRatio));
   const typeCounts = new Map<string, number>();
   const kept: ScoredResult[] = [];
 

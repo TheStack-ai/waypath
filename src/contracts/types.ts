@@ -312,6 +312,11 @@ export interface WaypathFtsSyncStatus {
   missing_rows: number;
 }
 
+export interface WaypathTemporalCoherenceStatus {
+  expired_but_active: number;
+  warning: string | null;
+}
+
 export interface WaypathHealthResult {
   operation: 'health';
   status: 'ready';
@@ -320,6 +325,7 @@ export interface WaypathHealthResult {
   fts_sync: WaypathFtsSyncStatus;
   stale_pages: number;
   pending_reviews: number;
+  temporal_coherence: WaypathTemporalCoherenceStatus;
   jcp_status: WaypathSourceHealthStatus;
   mempalace_status: WaypathSourceHealthStatus;
   db_size_bytes: number;

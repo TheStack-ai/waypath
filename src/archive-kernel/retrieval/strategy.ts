@@ -115,6 +115,11 @@ function sourceKindWeight(
     : profile?.missingSourceKindWeight ?? 0.25;
 }
 
+function matchesWordBoundary(haystack: string, token: string): boolean {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|\\W)${escaped}(?:\\W|$)`, 'i').test(haystack);
+}
+
 function lexicalScore(candidate: RetrievalCandidate, tokens: readonly string[]): number {
   if (tokens.length === 0) return 0;
 
@@ -126,8 +131,8 @@ function lexicalScore(candidate: RetrievalCandidate, tokens: readonly string[]):
 
   let score = 0;
   for (const token of tokens) {
-    if (haystack.includes(token)) {
-      score += title.includes(token) ? 3 : 1;
+    if (matchesWordBoundary(haystack, token)) {
+      score += matchesWordBoundary(title, token) ? 3 : 1;
     }
   }
   return score;

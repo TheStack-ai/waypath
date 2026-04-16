@@ -1,6 +1,6 @@
 import type { MemoryType, AccessTier, KnowledgePageStatus, KnowledgePageType, TruthStatus } from '../contracts.js';
 
-export const TRUTH_KERNEL_SCHEMA_VERSION = 3;
+export const TRUTH_KERNEL_SCHEMA_VERSION = 4;
 
 export const MEMORY_TYPES: readonly MemoryType[] = [
   'episodic',
@@ -243,6 +243,129 @@ export const TRUTH_KERNEL_V3_TEMPORAL_COLUMNS: readonly {
   { table: 'relationships', backfillSource: 'created_at' },
   { table: 'promoted_memories', backfillSource: 'created_at' },
 ];
+
+/**
+ * Schema v4 migration: add FOREIGN KEY constraints to tables that reference
+ * entities, provenance_records, evidence_bundles, and claims.
+ *
+ * SQLite does not support ALTER TABLE ADD CONSTRAINT, so we recreate each
+ * table with the FK clause, copy data, drop old, rename new.
+ * The entire migration runs inside a transaction (see storage.ts).
+ */
+export const TRUTH_KERNEL_V4_FK_MIGRATION = `
+-- relationships
+CREATE TABLE relationships_v4 (
+  relationship_id TEXT PRIMARY KEY,
+  from_entity_id TEXT NOT NULL REFERENCES entities(entity_id) ON DELETE RESTRICT,
+  relation_type TEXT NOT NULL,
+  to_entity_id TEXT NOT NULL REFERENCES entities(entity_id) ON DELETE RESTRICT,
+  weight REAL,
+  status TEXT NOT NULL CHECK (status IN (${TRUTH_STATUS_LIST})),
+  provenance_id TEXT REFERENCES provenance_records(provenance_id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  valid_from TEXT,
+  valid_until TEXT
+);
+INSERT INTO relationships_v4 SELECT relationship_id, from_entity_id, relation_type, to_entity_id, weight, status, provenance_id, created_at, updated_at, valid_from, valid_until FROM relationships;
+DROP TABLE relationships;
+ALTER TABLE relationships_v4 RENAME TO relationships;
+CREATE INDEX IF NOT EXISTS idx_relationships_from_entity_id ON relationships(from_entity_id);
+CREATE INDEX IF NOT EXISTS idx_relationships_to_entity_id ON relationships(to_entity_id);
+
+-- decisions
+CREATE TABLE decisions_v4 (
+  decision_id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  statement TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN (${TRUTH_STATUS_LIST})),
+  scope_entity_id TEXT REFERENCES entities(entity_id) ON DELETE SET NULL,
+  effective_at TEXT,
+  superseded_by TEXT,
+  provenance_id TEXT REFERENCES provenance_records(provenance_id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  valid_from TEXT,
+  valid_until TEXT
+);
+INSERT INTO decisions_v4 SELECT decision_id, title, statement, status, scope_entity_id, effective_at, superseded_by, provenance_id, created_at, updated_at, valid_from, valid_until FROM decisions;
+DROP TABLE decisions;
+ALTER TABLE decisions_v4 RENAME TO decisions;
+CREATE INDEX IF NOT EXISTS idx_decisions_status_updated_at ON decisions(status, updated_at DESC);
+
+-- preferences
+CREATE TABLE preferences_v4 (
+  preference_id TEXT PRIMARY KEY,
+  subject_kind TEXT NOT NULL,
+  subject_ref TEXT,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  strength TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN (${TRUTH_STATUS_LIST})),
+  provenance_id TEXT REFERENCES provenance_records(provenance_id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  valid_from TEXT,
+  valid_until TEXT
+);
+INSERT INTO preferences_v4 SELECT preference_id, subject_kind, subject_ref, key, value, strength, status, provenance_id, created_at, updated_at, valid_from, valid_until FROM preferences;
+DROP TABLE preferences;
+ALTER TABLE preferences_v4 RENAME TO preferences;
+CREATE INDEX IF NOT EXISTS idx_preferences_subject_kind_ref ON preferences(subject_kind, subject_ref);
+
+-- promoted_memories
+CREATE TABLE promoted_memories_v4 (
+  memory_id TEXT PRIMARY KEY,
+  memory_type TEXT NOT NULL CHECK (memory_type IN (${MEMORY_TYPE_LIST})),
+  access_tier TEXT NOT NULL CHECK (access_tier IN (${ACCESS_TIER_LIST})),
+  summary TEXT NOT NULL,
+  content TEXT NOT NULL,
+  subject_entity_id TEXT REFERENCES entities(entity_id) ON DELETE SET NULL,
+  status TEXT NOT NULL CHECK (status IN (${TRUTH_STATUS_LIST})),
+  provenance_id TEXT REFERENCES provenance_records(provenance_id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  valid_from TEXT,
+  valid_until TEXT
+);
+INSERT INTO promoted_memories_v4 SELECT memory_id, memory_type, access_tier, summary, content, subject_entity_id, status, provenance_id, created_at, updated_at, valid_from, valid_until FROM promoted_memories;
+DROP TABLE promoted_memories;
+ALTER TABLE promoted_memories_v4 RENAME TO promoted_memories;
+CREATE INDEX IF NOT EXISTS idx_promoted_memories_status_updated_at ON promoted_memories(status, updated_at DESC);
+
+-- claims
+CREATE TABLE claims_v4 (
+  claim_id TEXT PRIMARY KEY,
+  claim_type TEXT NOT NULL,
+  claim_text TEXT NOT NULL,
+  subject_entity_id TEXT REFERENCES entities(entity_id) ON DELETE SET NULL,
+  status TEXT NOT NULL CHECK (status IN (${TRUTH_STATUS_LIST})),
+  evidence_bundle_id TEXT REFERENCES evidence_bundles(bundle_id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+INSERT INTO claims_v4 SELECT * FROM claims;
+DROP TABLE claims;
+ALTER TABLE claims_v4 RENAME TO claims;
+CREATE INDEX IF NOT EXISTS idx_claims_status_updated_at ON claims(status, updated_at DESC);
+
+-- promotion_candidates
+CREATE TABLE promotion_candidates_v4 (
+  candidate_id TEXT PRIMARY KEY,
+  claim_id TEXT NOT NULL REFERENCES claims(claim_id) ON DELETE RESTRICT,
+  proposed_action TEXT NOT NULL CHECK (proposed_action IN ('create', 'update', 'supersede')),
+  target_object_type TEXT NOT NULL,
+  target_object_id TEXT,
+  review_status TEXT NOT NULL CHECK (review_status IN ('pending', 'accepted', 'rejected', 'superseded', 'needs_more_evidence')),
+  review_notes TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+INSERT INTO promotion_candidates_v4 SELECT * FROM promotion_candidates;
+DROP TABLE promotion_candidates;
+ALTER TABLE promotion_candidates_v4 RENAME TO promotion_candidates;
+CREATE INDEX IF NOT EXISTS idx_promotion_candidates_review_status ON promotion_candidates(review_status, updated_at DESC);
+`;
 
 export function buildTruthKernelMigrationSql(): string {
   return [

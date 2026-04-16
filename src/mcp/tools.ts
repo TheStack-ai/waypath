@@ -158,6 +158,44 @@ export function createWaypathMcpTools(): readonly WaypathMcpTool[] {
       },
     },
     {
+      name: 'waypath_resolve_contradiction',
+      description: 'Resolve a Waypath preference contradiction by keeping one preference.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          key: { type: 'string', description: 'The preference key with the contradiction.' },
+          keepPreferenceId: { type: 'string', description: 'The preference ID to keep.' },
+          scopeRef: { type: 'string', description: 'Optional scope reference.' },
+          notes: { type: 'string', description: 'Optional resolution notes.' },
+        },
+        required: ['key', 'keepPreferenceId'],
+        additionalProperties: false,
+      },
+      handler(args, facade) {
+        return facade.resolveContradiction(
+          requiredString(args, 'key'),
+          requiredString(args, 'keepPreferenceId'),
+          optionalString(args, 'scopeRef'),
+          optionalString(args, 'notes'),
+        );
+      },
+    },
+    {
+      name: 'waypath_refresh_page',
+      description: 'Refresh a Waypath knowledge page.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          pageId: { type: 'string', description: 'The knowledge page ID to refresh.' },
+        },
+        required: ['pageId'],
+        additionalProperties: false,
+      },
+      handler(args, facade) {
+        return facade.refreshPage(requiredString(args, 'pageId'));
+      },
+    },
+    {
       name: 'waypath_source_status',
       description: 'Inspect local source adapter availability.',
       inputSchema: {

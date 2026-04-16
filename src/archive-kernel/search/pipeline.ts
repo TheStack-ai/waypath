@@ -87,14 +87,20 @@ export function queryTruthDirect(
   const candidates = loadTruthDirectCandidates(store, normalizedQuery, tokens);
   if (candidates.length === 0) return [];
 
-  // Build FTS5 keyword scores for truth candidates.
+  // Build FTS5 keyword scores for truth candidates using min-max normalized BM25.
   const ftsKeywordScores = new Map<string, number>();
   const ftsHits = store.searchWaypathFts(normalizedQuery, Math.max(candidates.length * 2, 40));
-  for (let index = 0; index < ftsHits.length; index += 1) {
-    const hit = ftsHits[index];
-    if (!hit) continue;
-    // Order-based scoring is more stable than raw bm25 magnitudes across SQLite builds.
-    ftsKeywordScores.set(hit.source_id, Math.max(1, ftsHits.length - index));
+  if (ftsHits.length > 0) {
+    const ranks = ftsHits.map((h) => Math.abs(h.rank)); // FTS5 rank is negative
+    const minRank = Math.min(...ranks);
+    const maxRank = Math.max(...ranks);
+    const range = maxRank - minRank || 1; // avoid division by zero
+    for (let i = 0; i < ftsHits.length; i++) {
+      const hit = ftsHits[i];
+      if (!hit) continue;
+      const normalized = 1 - (Math.abs(hit.rank) - minRank) / range; // higher = better
+      ftsKeywordScores.set(hit.source_id, Math.max(0.01, normalized));
+    }
   }
 
   // Score each candidate with a direct combined score (no RRF)
@@ -106,8 +112,8 @@ export function queryTruthDirect(
     let keyword = ftsKeywordScores.get(c.id) ?? 0;
     if (keyword === 0) {
       for (const token of tokens) {
-        if (titleLower.includes(token)) keyword += 3;
-        if (contentLower.includes(token)) keyword += 1;
+        if (matchesWordBoundary(titleLower, token)) keyword += 3;
+        if (matchesWordBoundary(contentLower, token)) keyword += 1;
       }
     }
 
@@ -136,8 +142,8 @@ export function queryTruthDirect(
     let matchCount = 0;
     let titleBonus = 0;
     for (const token of tokens) {
-      const inTitle = titleLower.includes(token);
-      const inContent = contentLower.includes(token);
+      const inTitle = matchesWordBoundary(titleLower, token);
+      const inContent = matchesWordBoundary(contentLower, token);
       if (inTitle || inContent) matchCount++;
       if (inTitle) titleBonus += 0.5;
     }
@@ -192,17 +198,14 @@ export function searchTruthKernel(
   const provenanceRanked = rankByProvenance(candidates, recallWeights);
   const lexicalRanked = rankByLexical(candidates, tokens);
 
-  // Step 3: Build ranked lists for RRF
+  // Step 3: Build ranked lists for RRF — always include all 4 dimensions
+  // so RRF fusion weights remain consistent regardless of graph data availability.
   const rankedLists: RankedList[] = [
     { dimension: 'keyword', results: keywordRanked },
     { dimension: 'lexical', results: lexicalRanked },
     { dimension: 'provenance', results: provenanceRanked },
+    { dimension: 'graph', results: graphRanked },
   ];
-
-  // Only include graph dimension if we have graph data
-  if (graphDepths && graphDepths.size > 0) {
-    rankedLists.push({ dimension: 'graph', results: graphRanked });
-  }
   if (extraRankedLists && extraRankedLists.length > 0) {
     rankedLists.push(...extraRankedLists);
   }
@@ -212,7 +215,7 @@ export function searchTruthKernel(
     ? rrfFusion(rankedLists)
     : [];
 
-  return dedupResults(archiveResults).slice(0, searchOpts.limit ?? 20);
+  return dedupResults(archiveResults, { originalCount: archiveResults.length }).slice(0, searchOpts.limit ?? 20);
 }
 
 /**
@@ -294,15 +297,15 @@ function rankByKeyword(
       ftsScored.push({ candidate: c, score: Math.max(1, ftsHits.length - ftsScored.length) });
     }
 
-    // Fallback: score candidates not in FTS index (evidence, pages) via string match
+    // Fallback: score candidates not in FTS index (evidence, pages) via word boundary match
     for (const c of candidates) {
       if (ftsMatchedIds.has(c.id)) continue;
       const titleLower = c.title.toLowerCase();
       const contentLower = c.content.toLowerCase();
       let score = 0;
       for (const token of tokens) {
-        if (titleLower.includes(token)) score += 3;
-        if (contentLower.includes(token)) score += 1;
+        if (matchesWordBoundary(titleLower, token)) score += 3;
+        if (matchesWordBoundary(contentLower, token)) score += 1;
       }
       if (score > 0) ftsScored.push({ candidate: c, score: score * 0.0001 });
     }
@@ -319,8 +322,8 @@ function rankByKeyword(
     const contentLower = c.content.toLowerCase();
     let score = 0;
     for (const token of tokens) {
-      if (titleLower.includes(token)) score += 3;
-      if (contentLower.includes(token)) score += 1;
+      if (matchesWordBoundary(titleLower, token)) score += 3;
+      if (matchesWordBoundary(contentLower, token)) score += 1;
     }
     return { candidate: c, score };
   });
@@ -407,8 +410,8 @@ function rankByLexical(
     let matchCount = 0;
     let titleBonus = 0;
     for (const token of tokens) {
-      const inTitle = titleLower.includes(token);
-      const inContent = contentLower.includes(token);
+      const inTitle = matchesWordBoundary(titleLower, token);
+      const inContent = matchesWordBoundary(contentLower, token);
       if (inTitle || inContent) matchCount++;
       if (inTitle) titleBonus += 0.5;
     }
@@ -424,7 +427,7 @@ function rankByLexical(
 
 function matchesTokens(text: string, tokens: readonly string[]): boolean {
   const haystack = text.toLowerCase();
-  return tokens.some((token) => haystack.includes(token));
+  return tokens.some((token) => matchesWordBoundary(haystack, token));
 }
 
 interface CandidateProvenance {
@@ -440,7 +443,8 @@ function safeParseState(stateJson: string): Record<string, unknown> {
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
       ? parsed as Record<string, unknown>
       : {};
-  } catch {
+  } catch (error) {
+    console.warn(`[waypath] safeParseState: failed to parse state_json: ${error instanceof Error ? error.message : String(error)}`);
     return {};
   }
 }
@@ -620,6 +624,11 @@ function loadTruthDirectCandidates(
   }
 
   return candidates;
+}
+
+function matchesWordBoundary(haystack: string, token: string): boolean {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|\\W)${escaped}(?:\\W|$)`, 'i').test(haystack);
 }
 
 function minDefined(...values: (number | undefined)[]): number | undefined {

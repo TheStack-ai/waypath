@@ -26,9 +26,9 @@ import type {
 } from '../jarvis_fusion/contracts.js';
 
 const DEFAULT_FOCUS = {
-  project: 'waypath',
-  objective: 'bootstrap local-first runtime',
-  activeTask: 'codex-host-shim-skeleton',
+  project: '',
+  objective: '',
+  activeTask: '',
 } as const;
 
 export interface SessionRuntimeOptions {
@@ -211,6 +211,8 @@ function loadReferencedEntities(
   store: SqliteTruthKernelStorage,
   entityIds: readonly string[],
 ): readonly TruthEntityRecord[] {
+  // N+1 acceptable here: local SQLite, typically 5-15 entity IDs from graph edges,
+  // and each getEntity() is a single indexed lookup with negligible overhead.
   return entityIds
     .map((entityId) => store.getEntity(entityId))
     .filter((entity): entity is TruthEntityRecord => Boolean(entity));
@@ -259,7 +261,8 @@ function entityProvenance(
     const parsed = JSON.parse(entity.state_json) as Record<string, unknown>;
     const provenanceId = typeof parsed.provenance_id === 'string' ? parsed.provenance_id : null;
     return recordProvenance(store, provenanceId);
-  } catch {
+  } catch (error) {
+    console.warn(`[waypath] entityProvenance: failed to parse state_json for entity ${entity.entity_id}: ${error instanceof Error ? error.message : String(error)}`);
     return undefined;
   }
 }
@@ -310,8 +313,7 @@ function rankEntities(
   entities: readonly TruthEntityRecord[],
   relationships: readonly GraphRelationshipRow[],
   projectEntityId: string,
-  strategy: ReturnType<typeof createRetrievalStrategy>,
-  focusTokens: readonly string[],
+  _strategy: ReturnType<typeof createRetrievalStrategy>,
   graphDepthMap?: ReadonlyMap<string, number>,
 ): readonly TruthEntityRecord[] {
   const connectionCounts = new Map<string, number>();
@@ -352,8 +354,6 @@ function rankDecisions(
   store: SqliteTruthKernelStorage,
   decisions: readonly TruthDecisionRecord[],
   entityScores: ReadonlyMap<string, number>,
-  strategy: ReturnType<typeof createRetrievalStrategy>,
-  focusTokens: readonly string[],
 ): readonly TruthDecisionRecord[] {
   return decisions
     .map<ScoredValue<TruthDecisionRecord>>((decision) => {
@@ -381,8 +381,6 @@ function rankPreferences(
   store: SqliteTruthKernelStorage,
   preferences: readonly TruthPreferenceRecord[],
   entityScores: ReadonlyMap<string, number>,
-  strategy: ReturnType<typeof createRetrievalStrategy>,
-  focusTokens: readonly string[],
 ): readonly TruthPreferenceRecord[] {
   return preferences
     .map<ScoredValue<TruthPreferenceRecord>>((preference) => {
@@ -412,8 +410,6 @@ function rankPromotedMemories(
   store: SqliteTruthKernelStorage,
   memories: readonly TruthPromotedMemoryRecord[],
   entityScores: ReadonlyMap<string, number>,
-  strategy: ReturnType<typeof createRetrievalStrategy>,
-  focusTokens: readonly string[],
 ): readonly TruthPromotedMemoryRecord[] {
   return memories
     .map<ScoredValue<TruthPromotedMemoryRecord>>((memory) => {
@@ -506,7 +502,6 @@ function formatGraphRelationships(
   entitiesById: ReadonlyMap<string, TruthEntityRecord>,
   entityScores: ReadonlyMap<string, number>,
   strategy: ReturnType<typeof createRetrievalStrategy>,
-  focusTokens: readonly string[],
 ): string[] {
   const relationshipSummaries = [
     ...persistedRelationships.map<ScoredValue<string>>((relationship) => {
@@ -690,20 +685,17 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
         expanded.persistedRelationships,
         projectEntityId,
         retrievalStrategy,
-        focusTokens,
         graphDepthMap,
       );
       const entityScores = new Map(
         rankedEntities.map((entity, index) => [entity.entity_id, rankedEntities.length - index] as const),
       );
-      const rankedDecisions = rankDecisions(store, expanded.decisions, entityScores, retrievalStrategy, focusTokens);
-      const rankedPreferences = rankPreferences(store, expanded.preferences, entityScores, retrievalStrategy, focusTokens);
+      const rankedDecisions = rankDecisions(store, expanded.decisions, entityScores);
+      const rankedPreferences = rankPreferences(store, expanded.preferences, entityScores);
       const rankedPromotedMemories = rankPromotedMemories(
         store,
         expanded.promotedMemories,
         entityScores,
-        retrievalStrategy,
-        focusTokens,
       );
       const entitiesById = new Map(
         rankedEntities.map((entity) => [entity.entity_id, entity] as const),
@@ -733,7 +725,6 @@ export function createSessionRuntime(options: SessionRuntimeOptions = {}): Sessi
         entitiesById,
         entityScores,
         retrievalStrategy,
-        focusTokens,
       );
 
       // Build related_pages from store — graph-expanded entity matching + project scope

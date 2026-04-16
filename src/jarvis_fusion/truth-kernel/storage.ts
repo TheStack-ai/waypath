@@ -18,7 +18,7 @@ import type {
 import type { EvidenceBundle, PromotionCandidateView, StoredKnowledgePage } from '../../contracts/index.js';
 import type { SqliteDb, SqliteDriver } from '../../shared/sqlite-driver.js';
 import { createSqliteDriver } from '../../shared/sqlite-factory.js';
-import { TRUTH_KERNEL_SCHEMA_VERSION, buildTruthKernelMigrationSql, buildTemporalMigrationStatements } from './schema.js';
+import { TRUTH_KERNEL_SCHEMA_VERSION, buildTruthKernelMigrationSql, buildTemporalMigrationStatements, TRUTH_KERNEL_V4_FK_MIGRATION } from './schema.js';
 import { nowIso } from '../../shared/time.js';
 
 export interface SqliteTruthKernelStoreOptions {
@@ -261,11 +261,24 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
       for (const stmt of buildTemporalMigrationStatements()) {
         try {
           this.db.exec(stmt);
-        } catch {
-          // Column already exists — safe to ignore
+        } catch (e) {
+          if (e instanceof Error && e.message.includes('duplicate column')) continue;
+          throw e;
         }
       }
       this.setSchemaMetaVersion('temporal_version', 1);
+    }
+    // v4: foreign key constraints — recreate tables with FK clauses
+    if (this.getSchemaMetaVersion('fk_version') !== 1) {
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        this.db.exec(TRUTH_KERNEL_V4_FK_MIGRATION);
+        this.db.exec('COMMIT');
+      } catch (error) {
+        this.db.exec('ROLLBACK');
+        throw error;
+      }
+      this.setSchemaMetaVersion('fk_version', 1);
     }
     if (this.getSchemaMetaVersion(WAYPATH_FTS_SCHEMA_NAME) !== WAYPATH_FTS_SCHEMA_VERSION) {
       this.rebuildWaypathFts();
@@ -464,11 +477,28 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
   }
 
   createPromotionCandidate(candidate: PromotionCandidateView): void {
+    const claimId = candidate.candidate_id;
+    // Ensure prerequisite claim record exists (FK: promotion_candidates.claim_id -> claims.claim_id)
+    this.run(
+      `INSERT INTO claims (claim_id, claim_type, claim_text, subject_entity_id, status, evidence_bundle_id, created_at, updated_at)
+       VALUES (:claim_id, :claim_type, :claim_text, :subject_entity_id, :status, :evidence_bundle_id, :created_at, :updated_at)
+       ON CONFLICT(claim_id) DO UPDATE SET claim_text=excluded.claim_text, updated_at=excluded.updated_at`,
+      {
+        claim_id: claimId,
+        claim_type: 'general',
+        claim_text: candidate.summary ?? candidate.subject ?? candidate.candidate_id,
+        subject_entity_id: null,
+        status: 'active',
+        evidence_bundle_id: null,
+        created_at: candidate.created_at,
+        updated_at: candidate.created_at,
+      },
+    );
     this.run(`INSERT INTO promotion_candidates (candidate_id,claim_id,proposed_action,target_object_type,target_object_id,review_status,review_notes,created_at,updated_at)
       VALUES (:candidate_id,:claim_id,:proposed_action,:target_object_type,:target_object_id,:review_status,:review_notes,:created_at,:updated_at)
       ON CONFLICT(candidate_id) DO UPDATE SET review_status=excluded.review_status,review_notes=excluded.review_notes,updated_at=excluded.updated_at`, {
       candidate_id: candidate.candidate_id,
-      claim_id: candidate.candidate_id,
+      claim_id: claimId,
       proposed_action: 'create',
       target_object_type: 'promoted_memory',
       target_object_id: null,
@@ -682,37 +712,47 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
    * List decision history by scope or specific ID.
    */
   listDecisionHistory(decisionId: string, limit = 20): readonly TruthDecisionRecord[] {
-    const rows: TruthDecisionRecord[] = [];
-    let currentId: string | null = decisionId;
-    const visited = new Set<string>();
-
-    while (currentId && rows.length < limit && !visited.has(currentId)) {
-      visited.add(currentId);
-      const record = this.getDecision(currentId);
-      if (!record) break;
-      rows.push(record);
-      // Follow superseded_by chain forward
-      if (record.superseded_by) {
-        currentId = record.superseded_by;
-      } else {
-        break;
-      }
-    }
-
-    // Also look backwards: find decisions that superseded_by = decisionId
-    const predecessors = this.all<Record<string, unknown>>(
-      `SELECT * FROM decisions WHERE superseded_by = :id ORDER BY valid_from DESC LIMIT :limit`,
+    // Walk backward: find predecessors whose superseded_by points into the chain
+    const backwardRows = this.all<Record<string, unknown>>(
+      `WITH RECURSIVE back_chain(decision_id) AS (
+        SELECT decision_id FROM decisions WHERE decision_id = :id
+        UNION ALL
+        SELECT d.decision_id FROM decisions d JOIN back_chain c ON d.superseded_by = c.decision_id
+      )
+      SELECT d.* FROM decisions d JOIN back_chain c ON d.decision_id = c.decision_id ORDER BY d.valid_from ASC LIMIT :limit`,
       { id: decisionId, limit },
     ).map(mapDecision);
 
-    for (const pred of predecessors) {
-      if (!visited.has(pred.decision_id)) {
-        rows.unshift(pred);
-        visited.add(pred.decision_id);
+    // Walk forward: follow the superseded_by field from the starting decision
+    const forwardRows = this.all<Record<string, unknown>>(
+      `WITH RECURSIVE fwd_chain(decision_id) AS (
+        SELECT decision_id FROM decisions WHERE decision_id = :id
+        UNION ALL
+        SELECT d.decision_id FROM decisions d JOIN fwd_chain c ON d.decision_id = (SELECT superseded_by FROM decisions WHERE decision_id = c.decision_id)
+        WHERE d.decision_id IS NOT NULL
+      )
+      SELECT d.* FROM decisions d JOIN fwd_chain c ON d.decision_id = c.decision_id ORDER BY d.valid_from ASC LIMIT :limit`,
+      { id: decisionId, limit },
+    ).map(mapDecision);
+
+    // Merge and deduplicate, ordered by valid_from ASC (oldest first)
+    const visited = new Set<string>();
+    const result: TruthDecisionRecord[] = [];
+
+    for (const row of backwardRows) {
+      if (!visited.has(row.decision_id)) {
+        visited.add(row.decision_id);
+        result.push(row);
+      }
+    }
+    for (const row of forwardRows) {
+      if (!visited.has(row.decision_id)) {
+        visited.add(row.decision_id);
+        result.push(row);
       }
     }
 
-    return rows;
+    return result;
   }
 
   listOpenPreferenceContradictions(limit = 8, scopeRef?: string): readonly string[] {
@@ -781,25 +821,31 @@ export class SqliteTruthKernelStorage implements TruthKernelStore {
   markKnowledgePagesStale(affectedIds: readonly string[]): readonly string[] {
     if (affectedIds.length === 0) return [];
     const timestamp = nowIso();
-    const staledPageIds: string[] = [];
 
-    for (const affectedId of affectedIds) {
-      const pages = this.all<{ page_id: string }>(
-        `SELECT page_id FROM knowledge_pages
-         WHERE status != 'stale'
-           AND (
-             EXISTS (SELECT 1 FROM json_each(linked_entity_ids_json) WHERE json_each.value = :id)
-             OR EXISTS (SELECT 1 FROM json_each(linked_decision_ids_json) WHERE json_each.value = :id)
-           )`,
-        { id: affectedId },
-      );
-      for (const row of pages) {
-        this.run(
-          `UPDATE knowledge_pages SET status = 'stale', updated_at = :ts WHERE page_id = :page_id`,
-          { ts: timestamp, page_id: row.page_id },
-        );
-        staledPageIds.push(row.page_id);
+    // Batch all affectedIds into a single query using json_each()
+    const idsJson = JSON.stringify(affectedIds);
+    const pages = this.all<{ page_id: string }>(
+      `SELECT DISTINCT page_id FROM knowledge_pages
+       WHERE status != 'stale'
+         AND (
+           EXISTS (SELECT 1 FROM json_each(linked_entity_ids_json) je, json_each(:ids) aid WHERE je.value = aid.value)
+           OR EXISTS (SELECT 1 FROM json_each(linked_decision_ids_json) je, json_each(:ids) aid WHERE je.value = aid.value)
+         )`,
+      { ids: idsJson },
+    );
+
+    const staledPageIds = pages.map((row) => row.page_id);
+
+    if (staledPageIds.length > 0) {
+      const placeholders = staledPageIds.map((_, i) => `:page_id_${i}`).join(', ');
+      const params: Record<string, unknown> = { ts: timestamp };
+      for (let i = 0; i < staledPageIds.length; i++) {
+        params[`page_id_${i}`] = staledPageIds[i];
       }
+      this.run(
+        `UPDATE knowledge_pages SET status = 'stale', updated_at = :ts WHERE page_id IN (${placeholders})`,
+        params,
+      );
     }
 
     return staledPageIds;
