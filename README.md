@@ -194,7 +194,9 @@ MCP tools exposed include `recall`, `page`, `promote`, `review`, `graph-query`, 
 
 ## Contributing
 
-Issues, PRs, and discussion at [github.com/TheStack-ai/waypath](https://github.com/TheStack-ai/waypath).
+Waypath welcomes **host shims**, **source adapters**, and bug fixes. Good first issues are labeled accordingly.
+
+Read **[CONTRIBUTING.md](./CONTRIBUTING.md)** for dev setup, code style, and PR flow.
 
 Before submitting a PR:
 
