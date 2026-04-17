@@ -1,6 +1,6 @@
 {
   "name": "waypath",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local-first external brain CLI for coding agents — SQLite-backed context, graph-aware recall, and governed memory for Claude Code, Codex, and MCP clients.",
   "type": "module",
   "main": "dist/src/index.js",
