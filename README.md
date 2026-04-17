@@ -1,19 +1,36 @@
-# Waypath
+<p align="right">
+  <strong>English</strong> ·
+  <a href="./README.ko.md">한국어</a> ·
+  <a href="./README.zh.md">中文</a>
+</p>
 
-> **Local-first external brain for coding agents.**
-> A SQLite-backed CLI that gives Claude Code, Codex, and any MCP client persistent context, graph-aware recall, and governed memory — with zero cloud dependencies.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/TheStack-ai/waypath/main/docs/media/waypath-banner.png" alt="Waypath — local-first external brain for coding agents" width="760" />
+</p>
 
-[![npm version](https://img.shields.io/npm/v/waypath.svg?color=blue)](https://www.npmjs.com/package/waypath)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org/)
-[![Tests](https://img.shields.io/badge/tests-131%20passing-brightgreen.svg)](./tests)
+<p align="center">
+  <strong>Local-first external brain for coding agents.</strong><br/>
+  A SQLite-backed CLI that gives Claude Code, Codex, and any MCP client persistent context, graph-aware recall, and governed memory — with <em>zero cloud dependencies</em>.
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/waypath"><img src="https://img.shields.io/npm/v/waypath.svg?color=blue&label=npm" alt="npm version" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg" alt="Node.js" /></a>
+  <img src="https://img.shields.io/badge/tests-131%20passing-brightgreen.svg" alt="Tests" />
+  <a href="https://www.npmjs.com/package/waypath"><img src="https://img.shields.io/npm/dm/waypath.svg?color=blue&label=downloads" alt="npm downloads" /></a>
+  <a href="https://github.com/TheStack-ai/waypath/stargazers"><img src="https://img.shields.io/github/stars/TheStack-ai/waypath?style=flat&color=yellow" alt="GitHub stars" /></a>
+</p>
+
+> [!TIP]
+> New here? The [Quick start](#quick-start) gets you from `npm install` to your first persistent agent session in about 60 seconds.
 
 ---
 
 ## What is Waypath?
 
 Waypath is a **local-first knowledge engine** for coding agents and solo developers.
-It stores your project decisions, entity relationships, and session artifacts in a single SQLite file, then serves **graph-aware, truth-first context** to any agent host (Claude Code, Codex, or an MCP client) through a thin CLI.
+It stores your project decisions, entity relationships, and session artifacts in a single SQLite file, then serves **graph-aware, truth-first context** to any agent host — Claude Code, Codex, or an MCP client — through a thin CLI.
 
 Unlike cloud memory services, Waypath:
 
@@ -34,7 +51,8 @@ Unlike cloud memory services, Waypath:
 
 ## Install
 
-**Requires Node.js ≥ 22.** Node 22.5+ unlocks the native `node:sqlite` driver; earlier 22.x versions auto-fall back to `better-sqlite3`.
+> [!IMPORTANT]
+> Requires **Node.js ≥ 22**. Node 22.5+ unlocks the native `node:sqlite` driver; earlier 22.x versions auto-fall back to `better-sqlite3`.
 
 ```bash
 npm install -g waypath
@@ -59,13 +77,13 @@ waypath codex --json \
   --store-path ~/.waypath/my-project.db
 ```
 
-**2. Recall relevant context** for a query:
+**2. Recall relevant context:**
 
 ```bash
 waypath recall --query "hybrid ranker decisions" --json
 ```
 
-**3. Capture a distilled insight** and promote it through review:
+**3. Capture a distilled insight and promote it through review:**
 
 ```bash
 waypath page    --subject "hybrid ranker v2 design"
@@ -73,10 +91,34 @@ waypath promote --subject "hybrid ranker v2 design"
 waypath review-queue --json
 ```
 
-**4. Run as an MCP server** (for Claude Code, Cursor, or any MCP client):
+**4. Run as an MCP server** (for Claude Code, Cursor, any MCP client):
 
 ```bash
 waypath mcp-server --store-path ~/.waypath/my-project.db
+```
+
+## See it in action
+
+```bash
+$ waypath codex --json --project auth-service \
+    --objective "migrate to passkeys" --task "design flow"
+{
+  "host": "codex",
+  "session_id": "auth-service:passkey-flow",
+  "context_pack": {
+    "truth_highlights": {
+      "decisions": [
+        "Use WebAuthn level 2 with user verification required",
+        "Argon2id for password fallback hashing"
+      ],
+      "entities": ["UserSession", "AuthGateway", "RefreshToken"],
+      "contradictions": []
+    },
+    "recent_pages": [
+      "Session storage design — promoted 2026-04-12"
+    ]
+  }
+}
 ```
 
 ## Command surface
@@ -93,6 +135,47 @@ waypath mcp-server --store-path ~/.waypath/my-project.db
 
 Full help: `waypath --help`.
 
+## Architecture
+
+Waypath is built from four independent kernels behind a thin facade:
+
+```mermaid
+flowchart TD
+    subgraph HOST[" Host Shims "]
+        direction LR
+        CX["codex"]
+        CC["claude-code"]
+        MC["mcp-server"]
+    end
+
+    Facade["<b>Facade</b><br/><code>createFacade()</code>"]
+
+    TK["<b>Truth Kernel</b><br/>decisions · entities · preferences<br/>temporal validity · supersede"]
+    AK["<b>Archive Kernel</b><br/>evidence · content-hash dedup<br/>FTS5 index"]
+    ON["<b>Ontology</b><br/>graph traversal<br/>pattern expansion"]
+    PR["<b>Promotion Engine</b><br/>candidate review<br/>contradiction detection"]
+
+    HOST --> Facade
+    Facade --> TK
+    Facade --> AK
+    Facade --> ON
+    Facade --> PR
+
+    classDef kernel fill:#21262d,color:#c9d1d9,stroke:#30363d,stroke-width:1px
+    classDef facade fill:#1f6feb,color:#ffffff,stroke:#58a6ff,stroke-width:2px
+    classDef host fill:#161b22,color:#c9d1d9,stroke:#30363d,stroke-width:1px
+    class TK,AK,ON,PR kernel
+    class Facade facade
+    class CX,CC,MC host
+```
+
+- **Truth kernel** — canonical decisions, entities, preferences, temporal validity (schema v3 with supersede + history).
+- **Archive kernel** — raw evidence store with content-hash dedup and FTS5 full-text index.
+- **Ontology layer** — graph traversal for entity/decision context expansion (patterns: `project_context`, `person_context`, `system_reasoning`, `contradiction_lookup`).
+- **Promotion engine** — candidate review, contradiction detection, supersede flows.
+
+A single `createFacade()` exposes 14 verbs. Host shims adapt it to each agent's bootstrap protocol.
+
 ## Configuration
 
 Waypath is **zero-config by default**. To tune retrieval weights, adapter toggles, or review thresholds, drop a `config.toml` in your working directory (or point `WAYPATH_CONFIG_PATH` at one):
@@ -101,7 +184,6 @@ Waypath is **zero-config by default**. To tune retrieval weights, adapter toggle
 [source_adapters]
 jarvis-memory-db = true
 jarvis-brain-db  = false
-mempalace        = false
 
 [retrieval.source_system_weights]
 truth-kernel = 1.2
@@ -119,38 +201,9 @@ Override anything via env vars:
 ```bash
 export WAYPATH_RECALL_WEIGHT_SOURCE_SYSTEM_TRUTH_KERNEL=1.8
 export WAYPATH_REVIEW_QUEUE_LIMIT=8
-export WAYPATH_SOURCE_ADAPTER_JARVIS_BRAIN_DB=false
 ```
 
 **Priority:** `env override > config.toml > built-in defaults`.
-
-## Architecture
-
-Waypath is built from four independent kernels behind a thin facade:
-
-```
-    ┌──────────────────────────────────────────────────┐
-    │                    Host Shims                    │
-    │   codex  ·  claude-code  ·  mcp-server           │
-    └────────────────────────┬─────────────────────────┘
-                             │
-                     ┌───────▼────────┐
-                     │     Facade     │  ← createFacade()
-                     └───────┬────────┘
-        ┌────────────┬───────┼────────┬────────────┐
-        │            │       │        │            │
-  ┌─────▼─────┐ ┌────▼────┐ ┌▼──────┐ ┌▼──────────┐
-  │  Truth    │ │ Archive │ │Onto-  │ │ Promotion │
-  │  Kernel   │ │ Kernel  │ │logy   │ │ Engine    │
-  └───────────┘ └─────────┘ └───────┘ └───────────┘
-```
-
-- **Truth kernel** — canonical decisions, entities, preferences, temporal validity (schema v3 with supersede + history).
-- **Archive kernel** — raw evidence store with content-hash dedup and FTS5 full-text index.
-- **Ontology layer** — graph traversal for entity/decision context expansion (patterns: `project_context`, `person_context`, `system_reasoning`, `contradiction_lookup`).
-- **Promotion engine** — candidate review, contradiction detection, supersede flows.
-
-A single `createFacade()` exposes 14 verbs (`session-start`, `recall`, `page`, `promote`, `review`, …). Host shims adapt it to each agent's bootstrap protocol.
 
 ## MCP server
 
@@ -160,13 +213,13 @@ Waypath ships a native MCP (Model Context Protocol) server as a second binary:
 waypath-mcp-server
 ```
 
-Or invoke through the main CLI:
+Or via the main CLI:
 
 ```bash
 waypath mcp-server --store-path ~/.waypath/project.db
 ```
 
-MCP tools exposed include `recall`, `page`, `promote`, `review`, `graph-query`, `source-status`.
+Tools exposed via MCP: `recall`, `page`, `promote`, `review`, `graph-query`, `source-status`.
 
 ## Requirements
 
@@ -181,20 +234,20 @@ MCP tools exposed include `recall`, `page`, `promote`, `review`, `graph-query`, 
 - **Stable surface:** CLI (26 commands), MCP server, facade API
 - **Deferred:** hosted deployment, multi-user sync, adaptive ranking feedback
 
-## How it compares
+## Compared to alternatives
 
 | | Waypath | Cloud memory (mem0, zep) | Vector-only RAG |
-|---|:-:|:-:|:-:|
+|---|:---:|:---:|:---:|
 | Local-first | ✓ | ✗ | depends |
 | Canonical truth schema | ✓ | ✗ | ✗ |
 | Graph-aware recall | ✓ | partial | ✗ |
 | Explicit review gate | ✓ | ✗ | ✗ |
 | MCP server built-in | ✓ | ✗ | ✗ |
-| One-file install | ✓ (`npm i -g waypath`) | requires service | varies |
+| One-file install | ✓ | needs service | varies |
 
 ## Contributing
 
-Waypath welcomes **host shims**, **source adapters**, and bug fixes. Good first issues are labeled accordingly.
+Waypath welcomes **host shims**, **source adapters**, and bug fixes. Good first issues are [labeled accordingly](https://github.com/TheStack-ai/waypath/issues?q=is%3Aopen+label%3A%22good+first+issue%22).
 
 Read **[CONTRIBUTING.md](./CONTRIBUTING.md)** for dev setup, code style, and PR flow.
 
