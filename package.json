@@ -1,12 +1,13 @@
 {
   "name": "waypath",
-  "version": "0.1.0-rc.0",
-  "description": "Local-first external brain for coding agents and solo developers.",
+  "version": "0.1.0",
+  "description": "Local-first external brain CLI for coding agents — SQLite-backed context, graph-aware recall, and governed memory for Claude Code, Codex, and MCP clients.",
   "type": "module",
   "main": "dist/src/index.js",
   "files": [
     "dist/src/**",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=22.0.0"
@@ -18,21 +19,46 @@
     "start": "npm run build && node dist/src/cli.js",
     "codex": "npm run build && node dist/src/cli.js codex --json",
     "clean": "rm -rf dist",
-    "pack:release": "npm pack"
+    "pack:release": "npm pack",
+    "prepublishOnly": "npm run build && npm test"
   },
   "bin": {
     "waypath": "dist/src/cli.js",
     "waypath-mcp-server": "dist/src/mcp/bin.js"
   },
+  "license": "MIT",
+  "author": "TheStack.ai <thekcatsai@gmail.com> (https://github.com/TheStack-ai)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TheStack-ai/waypath.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TheStack-ai/waypath/issues"
+  },
+  "homepage": "https://github.com/TheStack-ai/waypath#readme",
   "optionalDependencies": {
     "better-sqlite3": "^11.0.0"
   },
   "keywords": [
     "waypath",
-    "codex",
+    "cli",
     "local-first",
     "sqlite",
     "memory",
-    "cli"
+    "context",
+    "rag",
+    "knowledge-graph",
+    "ontology",
+    "claude-code",
+    "codex",
+    "coding-agents",
+    "mcp",
+    "mcp-server",
+    "typescript",
+    "retrieval",
+    "fts5",
+    "external-brain",
+    "session-memory",
+    "developer-tools"
   ]
 }

@@ -1,251 +1,208 @@
 # Waypath
 
-Local-first knowledge engine for coding agents and solo developers.
+> **Local-first external brain for coding agents.**
+> A SQLite-backed CLI that gives Claude Code, Codex, and any MCP client persistent context, graph-aware recall, and governed memory — with zero cloud dependencies.
 
-현재 기준 핵심 상태:
-
-- **local-first SQLite truth kernel**
-- **graph-aware session-start context**
-- **truth-backed recall**
-- **durable page / promotion / review flows**
-- **real local Jarvis / jarvis-brain read-only adapters**
-- **terminal installable npm package (`waypath`)**
+[![npm version](https://img.shields.io/npm/v/waypath.svg?color=blue)](https://www.npmjs.com/package/waypath)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org/)
+[![Tests](https://img.shields.io/badge/tests-131%20passing-brightgreen.svg)](./tests)
 
 ---
 
-## Requirements
+## What is Waypath?
 
-- **Node.js >= 22** required
-- **Node.js >= 22.5** recommended — enables the native `node:sqlite` module (used automatically when available)
-- **`better-sqlite3`** used as fallback on Node 22.0–22.4 or environments where native sqlite is unavailable
+Waypath is a **local-first knowledge engine** for coding agents and solo developers.
+It stores your project decisions, entity relationships, and session artifacts in a single SQLite file, then serves **graph-aware, truth-first context** to any agent host (Claude Code, Codex, or an MCP client) through a thin CLI.
 
-## Quick install (local tarball)
+Unlike cloud memory services, Waypath:
 
-> 현재는 registry publish 전 단계이므로, **로컬 tarball install**을 기준으로 사용합니다.
+- runs entirely on your machine,
+- owns a **canonical truth schema** instead of a vector blob,
+- treats every memory as first-class with **explicit promotion + review gates**,
+- ships a 77 kB npm package with **no required runtime services**.
 
-설치:
+## Why Waypath?
+
+| Problem | Waypath's answer |
+|---|---|
+| Agents forget across sessions | Persistent SQLite truth kernel |
+| RAG returns irrelevant chunks | FTS5 + RRF hybrid ranking with graph expansion |
+| Memory services hallucinate silently | Explicit `page → promote → review` governance |
+| Cloud lock-in, data exfiltration | Everything is one local `.db` file you own |
+| Tool per host (Claude, Codex, Cursor) | Single facade, thin host shims, native MCP server |
+
+## Install
+
+**Requires Node.js ≥ 22.** Node 22.5+ unlocks the native `node:sqlite` driver; earlier 22.x versions auto-fall back to `better-sqlite3`.
 
 ```bash
-npm run build
-npm pack
-npm install -g ./waypath-0.1.0-rc.0.tgz
+npm install -g waypath
 ```
 
-설치 확인:
+Verify:
 
 ```bash
 waypath --help
 waypath source-status --json
-waypath import-seed --json --project demo-project --store-path /tmp/jf-demo.db
-waypath codex --json --project demo-project --objective "bootstrap" --task "smoke" --store-path /tmp/jf-demo.db
 ```
 
----
+## Quick start
 
-## Current v1-core command surface
+**1. Bootstrap a session** (Codex example):
 
 ```bash
-waypath codex --json [--project ...] [--objective ...] [--task ...] [--store-path ...]
-waypath recall --query <text> [--json] [--store-path ...]
-waypath page --subject <text> [--json] [--store-path ...]
-waypath promote --subject <text> [--json] [--store-path ...]
-waypath review --candidate-id <id> --status <...> [--notes <text>] [--json] [--store-path ...]
-waypath review-queue [--json] [--store-path ...]
-waypath inspect-page --page-id <id> [--json] [--store-path ...]
-waypath inspect-candidate --candidate-id <id> [--json] [--store-path ...]
-waypath import-seed [--project <name>] [--store-path <path>] [--json]
-waypath import-local [--project <name>] [--store-path <path>] [--json]
-waypath source-status [--json]
+waypath codex --json \
+  --project my-project \
+  --objective "ship v2 of the retrieval pipeline" \
+  --task  "refactor hybrid ranker" \
+  --store-path ~/.waypath/my-project.db
 ```
 
----
+**2. Recall relevant context** for a query:
 
-## Optional runtime config
+```bash
+waypath recall --query "hybrid ranker decisions" --json
+```
 
-Waypath는 **zero-config 기본값**을 유지하지만, 현재 작업 디렉터리에 `config.toml`이 있거나
-`WAYPATH_CONFIG_PATH` / `JARVIS_FUSION_CONFIG_PATH`가 지정되어 있으면 런타임 knob를 읽습니다.
+**3. Capture a distilled insight** and promote it through review:
 
-우선순위:
+```bash
+waypath page    --subject "hybrid ranker v2 design"
+waypath promote --subject "hybrid ranker v2 design"
+waypath review-queue --json
+```
 
-1. env override
-2. `config.toml`
-3. built-in defaults
+**4. Run as an MCP server** (for Claude Code, Cursor, or any MCP client):
 
-예시:
+```bash
+waypath mcp-server --store-path ~/.waypath/my-project.db
+```
+
+## Command surface
+
+| Area | Commands |
+|------|----------|
+| **Session bootstrap** | `codex`, `claude-code`, `mcp-server` |
+| **Recall** | `recall`, `explain`, `graph-query`, `history` |
+| **Pages (distilled knowledge)** | `page`, `promote`, `refresh-page`, `inspect-page` |
+| **Review governance** | `review`, `review-queue`, `inspect-candidate`, `resolve-contradiction` |
+| **Import / scan** | `import-seed`, `import-local`, `scan` |
+| **Health** | `source-status`, `health`, `db-stats`, `rebuild-fts` |
+| **Maintenance** | `backup`, `benchmark`, `export` |
+
+Full help: `waypath --help`.
+
+## Configuration
+
+Waypath is **zero-config by default**. To tune retrieval weights, adapter toggles, or review thresholds, drop a `config.toml` in your working directory (or point `WAYPATH_CONFIG_PATH` at one):
 
 ```toml
 [source_adapters]
 jarvis-memory-db = true
-jarvis-brain-db = false
-mempalace = false
+jarvis-brain-db  = false
+mempalace        = false
 
 [retrieval.source_system_weights]
 truth-kernel = 1.2
-demo-source = 0.1
 
 [retrieval.source_kind_weights]
 decision = 0.9
-memory = 0.5
-
-[import]
-allow_missing_local_readers = true
+memory   = 0.5
 
 [review_queue]
 limit = 12
 ```
 
-대표 env override:
+Override anything via env vars:
 
 ```bash
-export WAYPATH_CONFIG_PATH=/path/to/config.toml
-export WAYPATH_SOURCE_ADAPTER_JARVIS_BRAIN_DB=false
 export WAYPATH_RECALL_WEIGHT_SOURCE_SYSTEM_TRUTH_KERNEL=1.8
 export WAYPATH_REVIEW_QUEUE_LIMIT=8
+export WAYPATH_SOURCE_ADAPTER_JARVIS_BRAIN_DB=false
 ```
 
-지원 범위:
+**Priority:** `env override > config.toml > built-in defaults`.
 
-- source adapter enable/disable
-- retrieval source-system / source-kind weighting (`recall` command와 session scoring 모두에 적용)
-- `import-local`에서 local reader가 없어도 실패하지 않을지 여부
-- review queue / stale / contradiction surfacing limit
+## Architecture
 
-관련 설계/구현 가이드는 `docs/16-retrieval-strategy-separation.md`를 기준으로 본다.
+Waypath is built from four independent kernels behind a thin facade:
 
----
+```
+    ┌──────────────────────────────────────────────────┐
+    │                    Host Shims                    │
+    │   codex  ·  claude-code  ·  mcp-server           │
+    └────────────────────────┬─────────────────────────┘
+                             │
+                     ┌───────▼────────┐
+                     │     Facade     │  ← createFacade()
+                     └───────┬────────┘
+        ┌────────────┬───────┼────────┬────────────┐
+        │            │       │        │            │
+  ┌─────▼─────┐ ┌────▼────┐ ┌▼──────┐ ┌▼──────────┐
+  │  Truth    │ │ Archive │ │Onto-  │ │ Promotion │
+  │  Kernel   │ │ Kernel  │ │logy   │ │ Engine    │
+  └───────────┘ └─────────┘ └───────┘ └───────────┘
+```
 
-## v1-core includes
+- **Truth kernel** — canonical decisions, entities, preferences, temporal validity (schema v3 with supersede + history).
+- **Archive kernel** — raw evidence store with content-hash dedup and FTS5 full-text index.
+- **Ontology layer** — graph traversal for entity/decision context expansion (patterns: `project_context`, `person_context`, `system_reasoning`, `contradiction_lookup`).
+- **Promotion engine** — candidate review, contradiction detection, supersede flows.
 
-- shared backend + thin host shim 구조
-- Codex-first bootstrap path
-- explicit promotion / review governance
-- evidence bundle persistence
-- contradiction / stale / review queue surfacing
-- operator inspection commands
-- local Jarvis/Jarvis-brain imports with read-only adapters
+A single `createFacade()` exposes 14 verbs (`session-start`, `recall`, `page`, `promote`, `review`, …). Host shims adapt it to each agent's bootstrap protocol.
 
-## deferred after v1-core
+## MCP server
 
-- real MemPalace adapter
-- full Claude parity
-- registry publish flow
-- adaptive ranking feedback loops
-- multi-user / hosted deployment
+Waypath ships a native MCP (Model Context Protocol) server as a second binary:
 
----
+```bash
+waypath-mcp-server
+```
 
-## planning materials / design context
+Or invoke through the main CLI:
 
-아래부터의 문서는 **왜 이렇게 만들었는지**에 대한 설계/분석 배경이다.
+```bash
+waypath mcp-server --store-path ~/.waypath/project.db
+```
 
-핵심 전제는 다음과 같습니다.
+MCP tools exposed include `recall`, `page`, `promote`, `review`, `graph-query`, `source-status`.
 
-- 기존 시스템들은 **직접 수정 대상이 아니라 reference source**입니다.
-- 이 프로젝트의 목표는 기존 시스템을 억지로 한데 묶는 것이 아니라, **좋은 구조와 작동 원리를 추출해 새 시스템을 설계하는 것**입니다.
-- 새 시스템의 v1은 **OMX + Codex 기반 로컬 운영 환경 전용**으로 먼저 사용합니다.
-- 배포/서비스화는 초기 목표가 아니라 **후속 단계**입니다.
-- `claude-telegram`, `mrstack` 같은 별도 프로젝트는 **이 planning scope에서 제외**합니다.
+## Requirements
 
-## Reference Sources
+- **Node.js ≥ 22.0** (required)
+- **Node.js ≥ 22.5** recommended — unlocks native `node:sqlite`
+- `better-sqlite3` is an **optional** fallback auto-used on 22.0–22.4 or where native sqlite is unavailable
 
-새 시스템 설계의 재료는 다음 source systems / artifacts 입니다.
+## Status
 
-- JCP / Jarvis (`~/.claude/jarvis`)
-- Jarvis Brain facade (`~/.jarvis-orb`)
-- Jarvis Ontology (`~/Projects/jarvis-ontology`)
-- MemPalace
-- 기존 분석 산출물 (`.omx/context`, `.omx/plans` 기반 문서)
+- **Version:** 0.1.0 — first public release
+- **Tests:** 131 passing (unit + integration + benchmark)
+- **Stable surface:** CLI (26 commands), MCP server, facade API
+- **Deferred:** hosted deployment, multi-user sync, adaptive ranking feedback
 
-## 이 workspace가 하는 일
+## How it compares
 
-이 폴더의 문서는 다음을 위해 존재합니다.
+| | Waypath | Cloud memory (mem0, zep) | Vector-only RAG |
+|---|:-:|:-:|:-:|
+| Local-first | ✓ | ✗ | depends |
+| Canonical truth schema | ✓ | ✗ | ✗ |
+| Graph-aware recall | ✓ | partial | ✗ |
+| Explicit review gate | ✓ | ✗ | ✗ |
+| MCP server built-in | ✓ | ✗ | ✗ |
+| One-file install | ✓ (`npm i -g waypath`) | requires service | varies |
 
-1. 기존 시스템에서 **무엇을 계승할지** 정리
-2. 새 메인 시스템의 **target architecture** 정의
-3. OMX + Codex 전용 **local-first MVP** 범위 정의
-4. 실제 구현 세션에서 바로 사용할 **implementation backlog** 작성
-5. 차별성을 만드는 **RAG + graph/ontology + wiki + promotion** 결합 구조 정의
+## Contributing
 
-## 이 workspace가 하지 않는 일
+Issues, PRs, and discussion at [github.com/TheStack-ai/waypath](https://github.com/TheStack-ai/waypath).
 
-- 기존 source systems를 직접 고치는 것
-- unrelated product/runtime 프로젝트까지 설계 범위를 넓히는 것
-- 초기부터 배포형/다중 사용자 시스템을 설계하는 것
+Before submitting a PR:
 
-## 문서 구성
+```bash
+npm run build
+npm test
+```
 
-### 요약 / 이해용 문서
-- `docs/01-context-and-purpose.md`
-  - 왜 새 시스템이 필요한지
-  - 무엇을 만들고 무엇을 만들지 않는지
-- `docs/02-system-understanding.md`
-  - 기존 source systems를 어떤 관점으로 읽어야 하는지
-- `docs/03-full-audit-summary.md`
-  - source-system audit의 핵심 결론
-- `docs/04-keep-delete-modify-fuse.md`
-  - 새 시스템에 무엇을 계승/폐기/수정/융합할지
-- `docs/05-implementation-roadmap.md`
-  - 설계에서 구현으로 가는 단계별 로드맵
-- `docs/06-source-extraction-matrix.md`
-  - source system별 계승 항목 매핑표
-- `docs/07-v1-architecture-spec.md`
-  - OMX + Codex 전용 local-first v1 아키텍처 명세
-- `docs/08-implementation-backlog.md`
-  - MVP backlog, acceptance criteria, verification plan
-- `docs/09-repo-module-plan.md`
-  - repo/module 경계, adapter 전략, 테스트 레이어 계획
-- `docs/10-storage-and-import-strategy.md`
-  - truth/archive persistence ownership과 source import 정책
-- `docs/11-product-thesis-and-differentiation.md`
-  - external brain layer로서의 제품 thesis와 차별성 정의
-- `docs/12-cognitive-data-model-and-flows.md`
-  - 핵심 객체와 retrieval/promote/wiki/session-start flow 정의
-- `docs/13-core-schemas-and-contracts.md`
-  - Truth schema, graph schema, context pack, page/promotion contract 고정
-- `docs/15-v1-core-release-candidate.md`
-  - 현재 tarball install 기준 release candidate 상태
-  - install / smoke / verification baseline
-- `docs/16-retrieval-strategy-separation.md`
-  - retrieval strategy layer review checklist
-  - non-breaking ranking/documentation invariants
+## License
 
-### canonical next-step reading order
-1. `docs/06-source-extraction-matrix.md`
-2. `docs/11-product-thesis-and-differentiation.md`
-3. `docs/07-v1-architecture-spec.md`
-4. `docs/12-cognitive-data-model-and-flows.md`
-5. `docs/13-core-schemas-and-contracts.md`
-6. `docs/08-implementation-backlog.md`
-7. `docs/09-repo-module-plan.md`
-8. `docs/10-storage-and-import-strategy.md`
-
-### OpenSpec 문서
-- `openspec/product.md`
-- `openspec/changes/unify-kernel-archive-system/`
-  - `.openspec.yaml`
-  - `proposal.md`
-  - `design.md`
-  - `tasks.md`
-
-## 현재까지의 핵심 결론
-
-한 줄로 요약하면:
-
-> **기존 시스템은 수정 대상이 아니라 설계 재료이고, 새 메인 시스템은 JCP/Jarvis·Ontology·jarvis-brain·MemPalace에서 검증된 강점만 추출해 OMX + Codex 전용 local-first external brain으로 다시 만드는 것이 목적이다.**
-
-구체적으로는:
-
-- 새 시스템의 **truth kernel**은 JCP/Jarvis에서 검증된 구조를 계승한다.
-- **ontology model**은 entity / relationship / reasoning substrate 설계에 반영한다.
-- `jarvis-brain`은 독립 brain DB가 아니라 **facade pattern source**로 다룬다.
-- MemPalace는 **archive kernel / historical evidence recall source**로 활용한다.
-- 초기 v1은 **local-first, single-operator, OMX + Codex 전용**으로 제한한다.
-- 차별성은 **RAG + ontology/graph + wiki + promotion governance**를 통합하는 데서 나온다.
-
-## 참고 원문 분석 아티팩트
-
-이 planning workspace는 아래 분석 문서들을 기반으로 재구성되었습니다.
-
-- `/Users/dd/.omx/context/full-claude-system-fusion-analysis-20260408T023208Z.md`
-- `/Users/dd/.omx/plans/prd-full-claude-system-fusion.md`
-- `/Users/dd/.omx/plans/test-spec-full-claude-system-fusion.md`
+**MIT** © [TheStack.ai](https://github.com/TheStack-ai) — see [LICENSE](./LICENSE).

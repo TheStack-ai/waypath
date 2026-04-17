@@ -7,3 +7,10 @@
 dist/
 .waypath/
 .npm-cache/
+
+# local tooling / agent state
+.claude/
+
+# npm release artifacts (built on demand, not committed)
+*.tgz
+
