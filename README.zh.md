@@ -20,6 +20,7 @@
   <img src="https://img.shields.io/badge/tests-131%20passing-brightgreen.svg" alt="Tests" />
   <a href="https://www.npmjs.com/package/waypath"><img src="https://img.shields.io/npm/dm/waypath.svg?color=blue&label=downloads" alt="npm downloads" /></a>
   <a href="https://github.com/TheStack-ai/waypath/stargazers"><img src="https://img.shields.io/github/stars/TheStack-ai/waypath?style=flat&color=yellow" alt="GitHub stars" /></a>
+  <a href="https://github.com/punkpeye/awesome-mcp-servers#knowledge-and-memory"><img src="https://img.shields.io/badge/Listed_on-awesome--mcp--servers-8A2BE2.svg" alt="Listed on awesome-mcp-servers" /></a>
 </p>
 
 > [!TIP]
